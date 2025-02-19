@@ -4,6 +4,7 @@ import torch
 from collections import OrderedDict
 from copy import deepcopy
 from torch.nn.parallel import DataParallel, DistributedDataParallel
+import glob
 
 from basicsr.models import lr_scheduler as lr_scheduler
 from basicsr.utils import get_root_logger
@@ -19,6 +20,10 @@ class BaseModel():
         self.is_train = opt['is_train']
         self.schedulers = []
         self.optimizers = []
+
+        self.save_max_num = opt['logger'].get('save_checkpoint_max_num', 100)
+        self.state_path_list = []
+        self.model_path_list = []
 
     def feed_data(self, data):
         pass
@@ -62,15 +67,20 @@ class BaseModel():
             record[metric] = dict(better=better, val=init_val, iter=-1)
         self.best_metric_results[dataset_name] = record
 
-    def _update_best_metric_result(self, dataset_name, metric, val, current_iter):
+    def _update_best_metric_result(self, dataset_name, metric, val, current_iter, save_best_metric = 'psnr'):
         if self.best_metric_results[dataset_name][metric]['better'] == 'higher':
             if val >= self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
                 self.best_metric_results[dataset_name][metric]['iter'] = current_iter
+                if save_best_metric == metric:
+                    return True
         else:
             if val <= self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
                 self.best_metric_results[dataset_name][metric]['iter'] = current_iter
+                if save_best_metric == metric:
+                    return True
+        return False
 
     def model_ema(self, decay=0.999):
         net_g = self.get_bare_model(self.net_g)
@@ -129,6 +139,9 @@ class BaseModel():
         elif scheduler_type == 'CosineAnnealingRestartLR':
             for optimizer in self.optimizers:
                 self.schedulers.append(lr_scheduler.CosineAnnealingRestartLR(optimizer, **train_opt['scheduler']))
+        elif scheduler_type == 'OneCycleLR':
+            for optimizer in self.optimizers:
+                self.schedulers.append(torch.optim.lr_scheduler.OneCycleLR(optimizer, **train_opt['scheduler']))
         else:
             raise NotImplementedError(f'Scheduler {scheduler_type} is not implemented yet.')
 
@@ -174,7 +187,7 @@ class BaseModel():
         """Get the initial lr, which is set by the scheduler.
         """
         init_lr_groups_l = []
-        for optimizer in self.optimizers:
+        for optimizer in self.initial_lr:
             init_lr_groups_l.append([v['initial_lr'] for v in optimizer.param_groups])
         return init_lr_groups_l
 
@@ -202,10 +215,11 @@ class BaseModel():
             self._set_lr(warm_up_lr_l)
 
     def get_current_learning_rate(self):
+        # hyc: only get the lr of the first optimizer???
         return [param_group['lr'] for param_group in self.optimizers[0].param_groups]
 
     @master_only
-    def save_network(self, net, net_label, current_iter, param_key='params'):
+    def save_network(self, net, net_label, current_iter, param_key='params', save_metric_info = True):
         """Save networks.
 
         Args:
@@ -217,7 +231,12 @@ class BaseModel():
         """
         if current_iter == -1:
             current_iter = 'latest'
-        save_filename = f'{net_label}_{current_iter}.pth'
+        # 文件的命令规则：{net_label}_{current_iter}后面跟着每个metric名字和对应值
+        save_filename = f'{net_label}_{current_iter}'
+        if save_metric_info:
+            for metric, value in self.metric_results.items():
+                save_filename += f'_{metric}_{value:.3f}'
+        save_filename += '.pth'
         save_path = os.path.join(self.opt['path']['models'], save_filename)
 
         net = net if isinstance(net, list) else [net]
@@ -250,6 +269,12 @@ class BaseModel():
         if retry == 0:
             logger.warning(f'Still cannot save {save_path}. Just ignore it.')
             # raise IOError(f'Cannot save {save_path}.')
+        else:
+            self.model_path_list.append(save_path)
+            if len(self.model_path_list) > self.save_max_num:
+                oldest_model_path = self.model_path_list.pop(0)
+                if os.path.exists(oldest_model_path):
+                    os.remove(oldest_model_path)
 
     def _print_different_keys_loading(self, crt_net, load_net, strict=True):
         """Print keys with different name or different size when loading models.
@@ -285,6 +310,19 @@ class BaseModel():
                     logger.warning(f'Size different, ignore [{k}]: crt_net: '
                                    f'{crt_net[k].shape}; load_net: {load_net[k].shape}')
                     load_net[k + '.ignore'] = load_net.pop(k)
+        """
+        这里strict=False把所有不匹配、会导致加载失败的情况都忽略掉了
+        strict 参数控制加载时的行为：
+            strict=True （默认值）：
+            要求 state_dict 中的所有键必须与模型参数完全匹配（包括键名和张量形状）。
+            如果有以下情况之一，会抛出异常：
+            state_dict 中存在模型中没有的键。
+            模型中有 state_dict 中不存在的键。
+            键名相同但张量形状不匹配。
+            strict=False ：
+            允许部分匹配，忽略多余的键或缺失的键。
+            如果键名相同但张量形状不匹配，仍然会抛出异常。
+        """
 
     def load_network(self, net, load_path, strict=True, param_key='params'):
         """Load network.
@@ -300,6 +338,8 @@ class BaseModel():
         logger = get_root_logger()
         net = self.get_bare_model(net)
         load_net = torch.load(load_path, map_location=lambda storage, loc: storage)
+        # 这里map_location=lambda storage, loc: storage表示强制将所有张量加载到 CPU 内存中，忽略保存时的设备信息
+        # loc参数表示保存时张量所在的设备信息（例如 'cuda:0' 或 'cpu'）
         if param_key is not None:
             if param_key not in load_net and 'params' in load_net:
                 param_key = 'params'
@@ -348,6 +388,12 @@ class BaseModel():
             if retry == 0:
                 logger.warning(f'Still cannot save {save_path}. Just ignore it.')
                 # raise IOError(f'Cannot save {save_path}.')
+            else:
+                self.state_path_list.append(save_path)
+                if len(self.state_path_list) > self.save_max_num:
+                    oldest_state_path = self.state_path_list.pop(0)
+                    if os.path.exists(oldest_state_path):
+                        os.remove(oldest_state_path)
 
     def resume_training(self, resume_state):
         """Reload the optimizers and schedulers for resumed training.
@@ -390,3 +436,51 @@ class BaseModel():
                 log_dict[name] = value.mean().item()
 
             return log_dict
+
+    def save_best(self, current_iter, save_best_metric = 'psnr'):
+        def save_best_network(net, net_label, current_iter, param_key='params', save_metric_info = True):            
+            save_filename = f'{net_label}_{current_iter}'
+            if save_metric_info:
+                for metric, value in self.metric_results.items():
+                    save_filename += f'_{metric}_{value:.3f}'
+            save_filename += '.pth'
+            exp_root = self.opt['path']['experiments_root']
+            save_path = os.path.join(exp_root, save_filename)
+            if not os.path.exists(save_path):
+                for file_to_remove in glob.glob(os.path.join(exp_root, net_label+'*')):
+                    os.remove(file_to_remove)
+
+                net = net if isinstance(net, list) else [net]
+                param_key = param_key if isinstance(param_key, list) else [param_key]
+                assert len(net) == len(param_key), 'The lengths of net and param_key should be the same.'
+
+                save_dict = {}
+                for net_, param_key_ in zip(net, param_key):
+                    net_ = self.get_bare_model(net_)
+                    state_dict = net_.state_dict()
+                    for key, param in state_dict.items():
+                        if key.startswith('module.'):  # remove unnecessary 'module.'
+                            key = key[7:]
+                        state_dict[key] = param.cpu()
+                    save_dict[param_key_] = state_dict
+
+                # avoid occasional writing errors
+                retry_times = 3
+                retry = retry_times
+                while retry > 0:
+                    try:
+                        torch.save(save_dict, save_path)
+                    except Exception as e:
+                        logger = get_root_logger()
+                        logger.warning(f'Save model error: {e}, remaining retry times: {retry - 1}')
+                        time.sleep(1)
+                    else:
+                        break
+                    finally:
+                        retry -= 1
+                if retry == 0:
+                    logger.warning(f'Retry {retry_times} times and still cannot save {save_path} when saving best network. Just ignore it.')
+        if hasattr(self, 'net_g_ema'):
+            save_best_network([self.net_g, self.net_g_ema], f'best_{save_best_metric}', current_iter, param_key=['params', 'params_ema'])
+        else:
+            save_best_network(self.net_g, f'best_{save_best_metric}', current_iter)

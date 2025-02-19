@@ -35,7 +35,7 @@ def paired_random_crop(img_gts, img_lqs, gt_patch_size, scale, gt_path=None):
         img_lqs (list[ndarray] | ndarray): LQ images. Note that all images
             should have the same shape. If the input is an ndarray, it will
             be transformed to a list containing itself.
-        gt_patch_size (int): GT patch size.
+        gt_patch_size (int | list[int]): GT patch size.
         scale (int): Scale factor.
         gt_path (str): Path to ground-truth. Default: None.
 
@@ -58,32 +58,65 @@ def paired_random_crop(img_gts, img_lqs, gt_patch_size, scale, gt_path=None):
     else:
         h_lq, w_lq = img_lqs[0].shape[0:2]
         h_gt, w_gt = img_gts[0].shape[0:2]
-    lq_patch_size = gt_patch_size // scale
-
+    if isinstance(gt_patch_size, list):
+        assert len(gt_patch_size) == 2, "gt_patch_size must be a list of two integers: [width, height]"
+        lq_patch_size_w, lq_patch_size_h = gt_patch_size // scale
+        gt_patch_size_w, gt_patch_size_h = gt_patch_size
+    elif isinstance(gt_patch_size, int):
+        lq_patch_size_w = gt_patch_size // scale
+        lq_patch_size_h = lq_patch_size_w
+        gt_patch_size_w, gt_patch_size_h = gt_patch_size, gt_patch_size
     if h_gt != h_lq * scale or w_gt != w_lq * scale:
         raise ValueError(f'Scale mismatches. GT ({h_gt}, {w_gt}) is not {scale}x ',
                          f'multiplication of LQ ({h_lq}, {w_lq}).')
-    if h_lq < lq_patch_size or w_lq < lq_patch_size:
-        raise ValueError(f'LQ ({h_lq}, {w_lq}) is smaller than patch size '
-                         f'({lq_patch_size}, {lq_patch_size}). '
-                         f'Please remove {gt_path}.')
+    # 如果图像比要crop的patch size还小，则等比例resize图像
+    if h_lq < lq_patch_size_h or w_lq < lq_patch_size_w:
+        ratio_w = w_lq / lq_patch_size_w
+        ratio_h = h_lq / lq_patch_size_h
+        if ratio_w < ratio_h:
+            h_lq = int(lq_patch_size_w / w_lq * h_lq)
+            w_lq = lq_patch_size_w
+            img_lqs = [cv2.resize(v, (w_lq, h_lq), interpolation=cv2.INTER_CUBIC) for v in img_lqs]
+        else:
+            w_lq = int(lq_patch_size_h / h_lq * w_lq)
+            h_lq = lq_patch_size_h
+            img_lqs = [cv2.resize(v, (w_lq, h_lq), interpolation=cv2.INTER_CUBIC) for v in img_lqs]
+    # 下面这种情况通常发生于scale==1，即不是超分辨率任务
+    if h_gt < gt_patch_size_h or w_gt < gt_patch_size_w:
+        ratio_w = w_gt / gt_patch_size_w
+        ratio_h = h_gt / gt_patch_size_h
+        if ratio_w < ratio_h:
+            h_gt = int(gt_patch_size_w / w_gt * h_gt)
+            w_gt = gt_patch_size_w
+            img_gts = [cv2.resize(v, (w_gt, h_gt), interpolation=cv2.INTER_CUBIC) for v in img_gts]
+        else:
+            w_gt = int(gt_patch_size_h / h_gt * w_gt)
+            h_gt = gt_patch_size_h
+            img_gts = [cv2.resize(v, (w_gt, h_gt), interpolation=cv2.INTER_CUBIC) for v in img_gts]
+
+    # if h_lq < lq_patch_size or w_lq < lq_patch_size:
+    #     raise ValueError(f'LQ ({h_lq}, {w_lq}) is smaller than patch size '
+    #                      f'({lq_patch_size}, {lq_patch_size}). '
+    #                      f'Please remove {gt_path}.')
 
     # randomly choose top and left coordinates for lq patch
-    top = random.randint(0, h_lq - lq_patch_size)
-    left = random.randint(0, w_lq - lq_patch_size)
+    top = random.randint(0, h_lq - lq_patch_size_h)
+    left = random.randint(0, w_lq - lq_patch_size_w)
 
     # crop lq patch
     if input_type == 'Tensor':
-        img_lqs = [v[:, :, top:top + lq_patch_size, left:left + lq_patch_size] for v in img_lqs]
+        img_lqs = [v[:, :, top:top + lq_patch_size_h, left:left + lq_patch_size_w] for v in img_lqs]
+        # 如果在dataset.__getitem__中调用并且是Tensor类型，不应该是这样吗：
+        #  img_lqs = [v[:, top:top + lq_patch_size_h, left:left + lq_patch_size_w] for v in img_lqs]
     else:
-        img_lqs = [v[top:top + lq_patch_size, left:left + lq_patch_size, ...] for v in img_lqs]
+        img_lqs = [v[top:top + lq_patch_size_h, left:left + lq_patch_size_w, ...] for v in img_lqs]
 
     # crop corresponding gt patch
     top_gt, left_gt = int(top * scale), int(left * scale)
     if input_type == 'Tensor':
-        img_gts = [v[:, :, top_gt:top_gt + gt_patch_size, left_gt:left_gt + gt_patch_size] for v in img_gts]
+        img_gts = [v[:, :, top_gt:top_gt + gt_patch_size_h, left_gt:left_gt + gt_patch_size_w] for v in img_gts]
     else:
-        img_gts = [v[top_gt:top_gt + gt_patch_size, left_gt:left_gt + gt_patch_size, ...] for v in img_gts]
+        img_gts = [v[top_gt:top_gt + gt_patch_size_h, left_gt:left_gt + gt_patch_size_w, ...] for v in img_gts]
     if len(img_gts) == 1:
         img_gts = img_gts[0]
     if len(img_lqs) == 1:

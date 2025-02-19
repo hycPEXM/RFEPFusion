@@ -1,3 +1,3 @@
-from .RFEPFusion import RFEPFusion
+from .RFEPFusion_net import RFEPFusion
 
-__all__ = ['RFEPFusion']
+__all__ = []

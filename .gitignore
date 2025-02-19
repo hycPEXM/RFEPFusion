@@ -130,3 +130,7 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+pretrained/
+
+hyc_test/
