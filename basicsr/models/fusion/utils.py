@@ -33,8 +33,8 @@ def init_weights(module):
             constant_(module.bias, 0)
 
 
-def init_pretrained_LLIE(pretrained_path = "../../../pretrained/segnext_small_1024x1024_city_160k.pth", 
-                         modality = 'vi', save_path = "../../../pretrained/LLIE_vi_init.pth"):
+def init_pretrained_LLIE(pretrained_path = "../../../experiments/pretrained_models/segnext_small_1024x1024_city_160k.pth", 
+                         modality = 'vi', save_path = "../../../experiments/pretrained_models/LLIE_vi_init.pth"):
     if modality == 'vi':
         model = LLIE_VI()
     elif modality == 'ir':
@@ -49,6 +49,9 @@ def init_pretrained_LLIE(pretrained_path = "../../../pretrained/segnext_small_10
         print(key)
 
 def init_pretrained_RFEPFusion_no_register():
+    pass
+
+def init_pretrained_RFEPFusion():
     pass
 
 class UpsampleConv(nn.Module):
