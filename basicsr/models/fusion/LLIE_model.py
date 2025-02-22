@@ -16,7 +16,7 @@ try :
 except:
     load_amp = False
 
-
+import random
 class Mixing_Augment:
     def __init__(self, mixup_beta, use_identity, device):
         self.dist = torch.distributions.beta.Beta(
@@ -73,15 +73,17 @@ class LLIEModel_VI(BaseModel):
             print('Using Automatic Mixed Precision')
         else:
             print('Not using Automatic Mixed Precision')
-                  
-        self.mixing_flag = self.opt['train']['mixing_augs'].get('mixup', False)
-        if self.mixing_flag:
-            mixup_beta = self.opt['train']['mixing_augs'].get(
-                'mixup_beta', 1.2)
-            use_identity = self.opt['train']['mixing_augs'].get(
-                'use_identity', False)
-            self.mixing_augmentation = Mixing_Augment(
-                mixup_beta, use_identity, self.device)
+        
+        mixing_augs = self.opt['train'].get('mixing_augs', None)
+        if mixing_augs is not None:
+            self.mixing_flag = self.opt['train'][['mixing_augs'].get('mixup', False)]
+            if self.mixing_flag:
+                mixup_beta = self.opt['train']['mixing_augs'].get(
+                    'mixup_beta', 1.2)
+                use_identity = self.opt['train']['mixing_augs'].get(
+                    'use_identity', False)
+                self.mixing_augmentation = Mixing_Augment(
+                    mixup_beta, use_identity, self.device)
 
         if self.is_train:
             self.init_training_settings()
@@ -302,8 +304,11 @@ class LLIEModel_VI(BaseModel):
 
             if save_img:
                 if self.opt['is_train']:
-                    save_img_path = osp.join(self.opt['path']['visualization'], img_name,
-                                             f'{img_name}_{current_iter}.png')
+                    # save_img_path = osp.join(self.opt['path']['visualization'], img_name,
+                    #                          f'{img_name}_{current_iter}.png')
+                    # 保存一份图片就好了，与原文件同名
+                    save_img_path = osp.join(self.opt['path']['visualization'], 
+                                             f'{img_name}.png')
                 else:
                     if self.opt['val']['suffix']:
                         save_img_path = osp.join(self.opt['path']['visualization'], dataset_name,

@@ -2,7 +2,7 @@
 name: RFEPFusion_LLIE_vi
 model_type: LLIEModel_VI
 scale: 1
-num_gpu: 4  
+num_gpu: 5
 manual_seed: 666
 # the size of the input image must be a multiple of 16
 # Padding in case images are not multiples of 16
@@ -25,7 +25,7 @@ datasets:
       - dataset_name: M3FD
         multi_ratio: 2
       - dataset_name: MSRS
-        multi_ratio: 2
+        multi_ratio: 3
       - dataset_name: RoadScene
         multi_ratio: 1
     io_backend:
@@ -35,9 +35,9 @@ datasets:
     mean: [0.485, 0.456, 0.406]
     std: [0.229, 0.224, 0.225]
 
-    gt_size: [320, 240]
+    gt_size: [320, 240]  # [weight, height]
     use_hflip: true
-    use_rot: true
+    use_rot: false  # if weight != height, then use_rot must be false
 
     # data loader
     num_worker_per_gpu: 8
@@ -121,6 +121,7 @@ val:
     niqe:
       type: calculate_niqe
       crop_border: 0
+      better: lower  # the lower, the better 只要设置不是“higher”，就是越小越好
 
 # logging settings
 logger:
@@ -137,4 +138,4 @@ dist_params:
   backend: nccl
   port: 29500
 
-find_unused_parameters: true
+# find_unused_parameters: true

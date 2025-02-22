@@ -60,7 +60,7 @@ def paired_random_crop(img_gts, img_lqs, gt_patch_size, scale, gt_path=None):
         h_gt, w_gt = img_gts[0].shape[0:2]
     if isinstance(gt_patch_size, list):
         assert len(gt_patch_size) == 2, "gt_patch_size must be a list of two integers: [width, height]"
-        lq_patch_size_w, lq_patch_size_h = gt_patch_size // scale
+        lq_patch_size_w, lq_patch_size_h = gt_patch_size[0] // scale, gt_patch_size[1] // scale
         gt_patch_size_w, gt_patch_size_h = gt_patch_size
     elif isinstance(gt_patch_size, int):
         lq_patch_size_w = gt_patch_size // scale

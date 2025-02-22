@@ -14,6 +14,10 @@ arch_filenames = [osp.splitext(osp.basename(v))[0] for v in scandir(arch_folder)
 # import all the arch modules
 _arch_modules = [importlib.import_module(f'basicsr.archs.{file_name}') for file_name in arch_filenames]
 
+fusion_folder = osp.join(arch_folder, 'fusion')
+fusion_filenames = [osp.splitext(osp.basename(v))[0] for v in scandir(fusion_folder) if v.endswith('_arch.py')]
+_fusion_modules = [importlib.import_module(f'basicsr.archs.fusion.{file_name}') for file_name in fusion_filenames]
+
 
 def build_network(opt):
     opt = deepcopy(opt)

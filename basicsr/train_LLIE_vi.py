@@ -84,6 +84,7 @@ def load_resume_state(opt):
     else:
         device_id = torch.cuda.current_device()
         resume_state = torch.load(resume_state_path, map_location=lambda storage, loc: storage.cuda(device_id))
+        # 负责设置pretrain_network_g为resume_state对应的models/下的.pth
         check_resume(opt, resume_state['iter'])
     return resume_state
 
@@ -212,7 +213,8 @@ def train_pipeline(root_path):
     # -1 stands for the latest; epoch=-1 means not saving the best training states, while current_iter=-1 means saving the latest network
     if opt.get('val') is not None:
         for val_loader in val_loaders:
-            model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
+            # model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
+            model.validation(val_loader, current_iter, tb_logger, True)  # 强制保存模型最后的可视化结果
     if tb_logger:
         tb_logger.close()
 

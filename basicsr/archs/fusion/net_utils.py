@@ -2,10 +2,6 @@ import torch
 import torch.nn as nn
 from torch.nn.init import trunc_normal_, constant_
 
-from .RFEPFusion_net import RFEPFusion_no_register
-from .mscan import MSCAN
-from .LLIE import LLIE_VI, LLIE_IR
-
 
 def init_weights(module):
     """初始化模型权重的函数
@@ -31,28 +27,6 @@ def init_weights(module):
             constant_(module.weight, 1.0)
         if hasattr(module, 'bias') and module.bias is not None:
             constant_(module.bias, 0)
-
-
-def init_pretrained_LLIE(pretrained_path = "../../../experiments/pretrained_models/segnext_small_1024x1024_city_160k.pth", 
-                         modality = 'vi', save_path = "../../../experiments/pretrained_models/LLIE_vi_init.pth"):
-    if modality == 'vi':
-        model = LLIE_VI()
-    elif modality == 'ir':
-        model = LLIE_IR()
-    else:
-        raise ValueError(f"不支持的模态: {modality}, 只支持 'vi' 或 'ir'")
-    pretrained_dict = torch.load(pretrained_path, map_location='cpu')
-    model_dict = model.state_dict()
-    for key in pretrained_dict['state_dict'].keys():
-        print(key)
-    for key in model_dict.keys():
-        print(key)
-
-def init_pretrained_RFEPFusion_no_register():
-    pass
-
-def init_pretrained_RFEPFusion():
-    pass
 
 class UpsampleConv(nn.Module):
     """上采样卷积模块
@@ -100,7 +74,3 @@ class UpsampleConv(nn.Module):
             
     def forward(self, x):
         return self.upsample(x)
-
-
-if __name__ == "__main__":
-    init_pretrained_LLIE()

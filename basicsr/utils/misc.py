@@ -113,7 +113,16 @@ def check_resume(opt, resume_iter):
             basename = network.replace('network_', '')
             if opt['path'].get('ignore_resume_networks') is None or (network
                                                                      not in opt['path']['ignore_resume_networks']):
-                opt['path'][name] = osp.join(opt['path']['models'], f'net_{basename}_{resume_iter}.pth')
+                import glob
+                net_paths = [f for f in glob.glob(os.path.join(opt['path']['models'], \
+                    f'net_{basename}_{resume_iter}*.pth')) if os.path.isfile(f)]
+                if len(net_paths) > 1:
+                    raise RuntimeError("The network corresponding to the resume state in model/ directory is not unique")
+                elif len(net_paths) == 1:
+                    raise RuntimeError("no corresponding .pth file")
+                else:
+                    opt['path'][name] = net_paths[0]
+                # opt['path'][name] = osp.join(opt['path']['models'], f'net_{basename}_{resume_iter}.pth')
                 print(f"Set {name} to {opt['path'][name]}")
 
         # change param_key to params in resume

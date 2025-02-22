@@ -1,8 +1,8 @@
-from mscan import *
+from .mscan import *
 
 from basicsr.utils.registry import ARCH_REGISTRY
 
-# import torch.nn.functional as F
+import torch.nn.functional as F
 
 # 光照分量引导的类似于cross attention的纯卷积注意力模块
 # class LightGuideModulation(nn.Module):
@@ -128,7 +128,8 @@ class IG_MHA(nn.Module):
         return out: [b,h,w,c]
         """
         b, h, w, c = x_in.shape
-        x = x_in.reshape(b, h * w, c)
+        # x = x_in.reshape(b, h * w, c)
+        x = x_in.view(b, h * w, c)
         q_inp = self.to_q(x)  # b,hw,c
         k_inp = self.to_k(x)  # b,hw,c
         v_inp = self.to_v(x)  # b,hw,c
@@ -158,7 +159,7 @@ class IG_MHA(nn.Module):
             0, 3, 1, 2).contiguous()).permute(0, 2, 3, 1).contiguous()
         out = out_c + out_p
 
-        return out
+        return out  # b,h,w,c
 
 
 class FeedForward(nn.Module):
@@ -209,7 +210,8 @@ class IGAB(nn.Module):
             x = attn(x, illu_fea_trans=illu_fea.permute(0, 2, 3, 1).contiguous()) + x
             x = ff(x) + x
         # out = x.permute(0, 3, 1, 2).contiguous()
-        return out
+        # return out
+        return x
 
 
 class LLIE_Encoder(nn.Module):
@@ -229,18 +231,26 @@ class LLIE_Encoder(nn.Module):
         light_up = vi * light_up_map  # I_light_up = R + C, where C is the corruption term to be eliminated in following stages
         light_up = self.conv_bridge(light_up)  # b,c=64,h,w
         b, c, h, w = light_up.shape
-        light_up = light_up.flatten(2).transpose(1, 2).contiguous()  # b,hw,c=64
+        # light_up = light_up.flatten(2).transpose(1, 2).contiguous()  # b,hw,c=64
         light_up = self.block1[0](light_up, h, w)
-        light_up = light_up.view(b, h, w, c)
+        # light_up = light_up.view(b, h, w, c)
+        light_up = light_up.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
         light_up = self.IGAB1(light_up, illu_guide)
-        light_up = light_up.view(b, h * w, c)
-        light_up = self.block1[1](light_up)
-        light_up = light_up.view(b, h, w, c)
+        # light_up = light_up.view(b, h * w, c)
+        light_up = light_up.permute(0, 3, 1, 2).contiguous()  # b,c,h,w
+        light_up = self.block1[1](light_up, h, w)
+        # light_up = light_up.view(b, h, w, c)
+        light_up = light_up.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
         light_up = self.IGAB2(light_up, illu_guide)
-        light_up = light_up.view(b, h * w, c)
-        light_up = self.block1[2](light_up)
+        # Don't forget that the first stage of small setting is 2, not 3
+        # light_up = light_up.view(b, h * w, c)
+        # light_up = light_up.permute(0, 3, 1, 2).contiguous()  # b,c,h,w
+        # light_up = self.block1[2](light_up, h, w)
+        # # light_up = light_up.flatten(2).transpose(1, 2).contiguous() 
+        # light_up = light_up.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
         light_up = self.norm1(light_up)
-        light_up = light_up.view(b, h, w, c).permute(0, 3, 1, 2).contiguous()  # b,c,h,w
+        # light_up = light_up.view(b, h, w, c).permute(0, 3, 1, 2).contiguous()  # b,c,h,w
+        light_up = light_up.permute(0, 3, 1, 2).contiguous()  # b,c,h,w
         return light_up
 
 class LLIE_Decoder(nn.Module):
@@ -271,11 +281,13 @@ class IrReconstructionEncoder(nn.Module):
     def forward(self, ir):
         ir = self.feature_extractor(ir)
         b, c, h, w = ir.shape
-        ir = ir.flatten(2).transpose(1, 2).contiguous()
+        # ir = ir.flatten(2).transpose(1, 2).contiguous()
         for blk in self.block1:
             ir = blk(ir, h, w)
+        ir = ir.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
         ir = self.norm1(ir)
-        ir = ir.view(b, h, w, c).permute(0, 3, 1, 2).contiguous()
+        # ir = ir.view(b, h, w, c).permute(0, 3, 1, 2).contiguous()
+        ir = ir.permute(0, 3, 1, 2).contiguous()  # b,c,h,w
         return ir
 
 class IrReconstructionDecoder(nn.Module):
@@ -297,7 +309,7 @@ class LLIE_VI(nn.Module):
         self.vi_encoder = LLIE_Encoder()
         self.vi_decoder = LLIE_Decoder()
 
-    def forward(self, vi, ir):
+    def forward(self, vi):
         vi_out = self.vi_decoder(self.vi_encoder(vi))
         return vi_out
 

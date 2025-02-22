@@ -371,7 +371,7 @@ class LightHamHead(nn.Module):
         if self.input_transform == 'resize_concat':
             inputs = [inputs[i] for i in self.in_index]
             upsampled_inputs = [
-                resize(
+                F.interpolate(
                     input=x,
                     size=inputs[0].shape[2:],
                     mode='bilinear',
@@ -397,7 +397,7 @@ class LightHamHead(nn.Module):
         # redundant/unnecessary computation because self.in_index is [0, 1, 2]
         # inputs = self._transform_inputs(inputs) 
 
-        inputs = [inputs[0], F.interpolate(
+        inputs = [inputs[0]] + [F.interpolate(
             level,
             size=inputs[0].shape[2:],
             mode='bilinear',

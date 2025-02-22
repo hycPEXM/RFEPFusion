@@ -14,6 +14,9 @@ model_filenames = [osp.splitext(osp.basename(v))[0] for v in scandir(model_folde
 # import all the model modules
 _model_modules = [importlib.import_module(f'basicsr.models.{file_name}') for file_name in model_filenames]
 
+fusion_folder = osp.join(model_folder, 'fusion')
+fusion_filenames = [osp.splitext(osp.basename(v))[0] for v in scandir(fusion_folder) if v.endswith('_model.py')]
+_fusion_modules = [importlib.import_module(f'basicsr.models.fusion.{file_name}') for file_name in fusion_filenames]
 
 def build_model(opt):
     """Build model from options.

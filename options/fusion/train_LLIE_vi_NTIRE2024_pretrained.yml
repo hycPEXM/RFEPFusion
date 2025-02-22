@@ -2,11 +2,12 @@
 name: RFEPFusion_LLIE_vi_NTIRE2024_pretrained
 model_type: LLIEModel_VI
 scale: 1
-num_gpu: 4  
+num_gpu: 5
 manual_seed: 666
 # the size of the input image must be a multiple of 16
 # Padding in case images are not multiples of 16
 # pad_size: 16  
+# auto_resume: true
 
 use_amp: true
 
@@ -24,13 +25,14 @@ datasets:
     mean: [0.485, 0.456, 0.406]
     std: [0.229, 0.224, 0.225]
 
-    gt_size: [640, 480]
+    gt_size: [640, 480]  # [weight, height]
     use_hflip: true
-    use_rot: true
+    # use_rot: true
+    use_rot: false  # if weight != height, then use_rot must be false
 
     # data loader
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 3
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
 
@@ -51,7 +53,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: ~
+  pretrain_network_g: experiments/pretrained_models/LLIE_vi_init.pth
   strict_load_g: true
   resume_state: ~
 
@@ -72,13 +74,13 @@ train:
   #   mixup_beta: 1.2
   #   use_identity: true
 
-  total_iter: 60000  
+  total_iter: 90000  
   # total_epoch: 500
   warmup_iter: -1  # no warm up
   scheduler:
     type: OneCycleLR
     max_lr: !!float 1e-3
-    total_steps: 60000  # 保持和total_iter一致 
+    total_steps: 90000  # 保持和total_iter一致 
     pct_start: 0.2
     div_factor: 10
     final_div_factor: 1000
@@ -132,4 +134,4 @@ dist_params:
   backend: nccl
   port: 29500
 
-find_unused_parameters: true
+# find_unused_parameters: true

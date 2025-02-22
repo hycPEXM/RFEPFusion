@@ -11,7 +11,8 @@ from torch.nn.modules.utils import _pair as to_2tuple
 # from mmcv.cnn.bricks import DropPath
 # from mmcv.cnn.utils.weight_init import (constant_init, normal_init,
 #                                         trunc_normal_init)
-from timm.models.layers import DropPath
+# from timm.models.layers import DropPath
+from timm.layers import DropPath
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -136,7 +137,7 @@ class Block(nn.Module):
         self.layer_scale_2 = nn.Parameter(
             layer_scale_init_value * torch.ones((dim)), requires_grad=True)
 
-    def forward(self, x, H, W):
+    def forward(self, x, H=None, W=None):
         # B, N, C = x.shape
         # x = x.permute(0, 2, 1).contiguous().view(B, C, H, W)
         x = x + self.drop_path(self.layer_scale_1.unsqueeze(-1).unsqueeze(-1)

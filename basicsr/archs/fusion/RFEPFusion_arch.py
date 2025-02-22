@@ -5,10 +5,10 @@ import torch.nn.functional as F
 from basicsr.utils.registry import ARCH_REGISTRY
 
 from .mscan import StemConv, tiny_settings, small_settings, MSCAN
-from .LLIE import LLIE_Encoder, IrReconstructionEncoder
+from .LLIE_arch import LLIE_Encoder, IrReconstructionEncoder
 from .fusion_modules import CSA_CMR_Module, CMAF_Module, SIM, MultiScaleFusion
 from .seg_decoder import LightHamHead, small_settings_decode_head
-from .utils import UpsampleConv
+from .net_utils import UpsampleConv
 
 # Asymmetric dual-stream/dual-path backbone (using backbone variant of different sizes for different modalities)
 # symmetric fusion modules
