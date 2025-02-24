@@ -50,8 +50,6 @@ class Mixing_Augment:
 
 @MODEL_REGISTRY.register()
 class LLIEModel_VI(BaseModel):
-    """Base SR model for single image super-resolution."""
-
     def __init__(self, opt):
         super(LLIEModel_VI, self).__init__(opt)
 
@@ -110,7 +108,7 @@ class LLIEModel_VI(BaseModel):
 
         # define losses
         self.loss_cls_dict = OrderedDict()
-        
+        # loss class name must start with the prefix "l_"
         if train_opt.get('pixel_opt'):
             self.loss_cls_dict['l_pix'] = build_loss(train_opt['pixel_opt']).to(self.device)
         if train_opt.get('color_loss'):
@@ -164,7 +162,11 @@ class LLIEModel_VI(BaseModel):
             # 混合精度训练的with语句块下需要进行模型前向计算和损失计算
             self.output = self.net_g(self.lq)            
             for loss_name, loss_cls in self.loss_cls_dict.items():
-                loss = loss_cls(self.output, self.gt)
+                #!!! 注意，在训练红外可见光融合的LLIE时，color_loss的self.gt应该换成self.lq！！！
+                if loss_name == 'l_color' and self.opt.get('use_lq_for_l_color', False):
+                    loss = loss_cls(self.output, self.lq) 
+                else:
+                    loss = loss_cls(self.output, self.gt)                  
                 l_total += loss
                 loss_dict[loss_name] = loss
         
@@ -190,6 +192,10 @@ class LLIEModel_VI(BaseModel):
             self.amp_scaler.unscale_(self.optimizer_g) # 在梯度裁剪前先unscale梯度
             if self.opt['train'].get('use_grad_clip', False):
                 torch.nn.utils.clip_grad_norm_(self.net_g.parameters(), self.opt['train']['max_grad_norm'])
+            scale_factor = self.amp_scaler.get_scale()
+            if scale_factor < 0.001:
+                logger = get_root_logger()
+                logger.info(f'Current scale factor is too small: {self.amp_scaler.get_scale():.4f}, meaning that the loss/gradient is too large')
             self.amp_scaler.step(self.optimizer_g)
             self.amp_scaler.update()
         else:
@@ -213,6 +219,35 @@ class LLIEModel_VI(BaseModel):
             with torch.no_grad():
                 self.output = self.net_g(self.lq)
             self.net_g.train()
+    # adapted from SegNeXt-main\mmseg\models\segmentors\encoder_decoder.py
+    def test_slide(self):
+        self.net_g.eval()
+        w_stride, h_stride = self.opt['datasets']['train']['gt_size']
+        h_crop = h_stride  # crop可以大于stride，patch之间会有一定重叠，可能会带来更好的效果，但是会增加推理时间
+        w_crop = w_stride
+        bs, _, h_img, w_img = self.lq.shape
+        out_channels = 3
+        h_grids = max(h_img - h_crop + h_stride - 1, 0) // h_stride + 1
+        w_grids = max(w_img - w_crop + w_stride - 1, 0) // w_stride + 1
+        preds = torch.zeros(bs, out_channels, h_img, w_img)
+        count_mat = torch.zeros(bs, 1, h_img, w_img)
+        for h_idx in range(h_grids):
+            for w_idx in range(w_grids):
+                y1 = h_idx * h_stride
+                x1 = w_idx * w_stride
+                y2 = min(y1 + h_crop, h_img)
+                x2 = min(x1 + w_crop, w_img)
+                y1 = max(y2 - h_crop, 0)
+                x1 = max(x2 - w_crop, 0)
+                lq_patch = self.lq[:, :, y1:y2, x1:x2]
+                with torch.no_grad():
+                    pred = self.net_g(lq_patch)
+                preds[:, :, y1:y2, x1:x2] += pred.to('cpu') # RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
+                count_mat[:, :, y1:y2, x1:x2] += 1
+        assert (count_mat == 0).sum() == 0, "might encounter zero dividing error"
+        preds = preds / count_mat
+        self.output = preds.to(self.device)
+        self.net_g.train()
 
     def test_selfensemble(self):
         # TODO: to be tested
@@ -283,11 +318,15 @@ class LLIEModel_VI(BaseModel):
         metric_data = dict()
         if use_pbar:
             pbar = tqdm(total=len(dataloader), unit='image')
-
+        torch.cuda.empty_cache()
         for idx, val_data in enumerate(dataloader):
             img_name = osp.splitext(osp.basename(val_data['lq_path'][0]))[0]
             self.feed_data(val_data)
-            self.test()
+            max_img_size = max(self.gt.shape[2:])
+            if max_img_size <= self.opt.get('infer_slide_max_size', 640):
+                self.test()
+            else:
+                self.test_slide()
 
             visuals = self.get_current_visuals()
             sr_img = tensor2img([visuals['result']])
@@ -376,3 +415,7 @@ class LLIEModel_VI(BaseModel):
         else:
             self.save_network(self.net_g, 'net_g', current_iter)
         self.save_training_state(epoch, current_iter)
+
+
+# @MODEL_REGISTRY.register()
+# class LLIEModel_IR(BaseModel):

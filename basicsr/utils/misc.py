@@ -118,7 +118,7 @@ def check_resume(opt, resume_iter):
                     f'net_{basename}_{resume_iter}*.pth')) if os.path.isfile(f)]
                 if len(net_paths) > 1:
                     raise RuntimeError("The network corresponding to the resume state in model/ directory is not unique")
-                elif len(net_paths) == 1:
+                elif len(net_paths) == 0:
                     raise RuntimeError("no corresponding .pth file")
                 else:
                     opt['path'][name] = net_paths[0]

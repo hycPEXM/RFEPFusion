@@ -5,7 +5,7 @@ from torchvision.transforms.functional import normalize
 from basicsr.data.data_util import paths_from_lmdb
 from basicsr.utils import FileClient, imfrombytes, img2tensor, rgb2ycbcr, scandir
 from basicsr.utils.registry import DATASET_REGISTRY
-
+from basicsr.data.transforms import augment, paired_random_crop
 
 @DATASET_REGISTRY.register()
 class SingleImageDataset(data.Dataset):
@@ -51,7 +51,17 @@ class SingleImageDataset(data.Dataset):
         # load lq image
         lq_path = self.paths[index]
         img_bytes = self.file_client.get(lq_path, 'lq')
-        img_lq = imfrombytes(img_bytes, float32=True)
+        img_lq = imfrombytes(img_bytes, float32=True)        
+
+        # augmentation for training
+        if self.opt['phase'] == 'train':
+            img_lq_temp = img_lq.copy()
+            gt_size = self.opt['gt_size']  # can be a list or an int
+            # random crop
+            _, img_lq = paired_random_crop(img_lq_temp, img_lq, gt_size, 1)
+            # flip, rotation
+            _, img_lq = augment([img_lq_temp, img_lq], self.opt['use_hflip'], self.opt['use_rot'])
+            del img_lq_temp
 
         # color space transform
         if 'color' in self.opt and self.opt['color'] == 'y':

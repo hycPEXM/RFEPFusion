@@ -217,6 +217,7 @@ class IGAB(nn.Module):
 class LLIE_Encoder(nn.Module):
     def __init__(self, backbone_settings = small_settings, in_channels=3):
         super(LLIE_Encoder, self).__init__()
+        self.backbone_settings = backbone_settings
         mscan = MSCAN(**backbone_settings)
         self.illumination_estimator = Illumination_Estimator(n_fea_middle=backbone_settings['embed_dims'][0])
         self.conv_bridge = nn.Conv2d(in_channels, backbone_settings['embed_dims'][0], kernel_size=3, padding=1, bias=True)
@@ -243,11 +244,12 @@ class LLIE_Encoder(nn.Module):
         light_up = light_up.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
         light_up = self.IGAB2(light_up, illu_guide)
         # Don't forget that the first stage of small setting is 2, not 3
-        # light_up = light_up.view(b, h * w, c)
-        # light_up = light_up.permute(0, 3, 1, 2).contiguous()  # b,c,h,w
-        # light_up = self.block1[2](light_up, h, w)
-        # # light_up = light_up.flatten(2).transpose(1, 2).contiguous() 
-        # light_up = light_up.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
+        if self.backbone_settings['depths'][0] == 3:
+            # light_up = light_up.view(b, h * w, c)
+            light_up = light_up.permute(0, 3, 1, 2).contiguous()  # b,c,h,w
+            light_up = self.block1[2](light_up, h, w)
+            # light_up = light_up.flatten(2).transpose(1, 2).contiguous() 
+            light_up = light_up.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
         light_up = self.norm1(light_up)
         # light_up = light_up.view(b, h, w, c).permute(0, 3, 1, 2).contiguous()  # b,c,h,w
         light_up = light_up.permute(0, 3, 1, 2).contiguous()  # b,c,h,w

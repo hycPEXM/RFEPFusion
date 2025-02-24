@@ -1,5 +1,5 @@
 # general settings
-name: RFEPFusion_LLIE_vi_NTIRE2024_pretrained
+name: RFEPFusion_LLIE_vi_LOL_pretrained
 model_type: LLIEModel_VI
 scale: 1
 num_gpu: 5
@@ -8,10 +8,9 @@ manual_seed: 666
 # Padding in case images are not multiples of 16
 # pad_size: 16  
 # auto_resume: true
-# use_lq_for_l_color: true
-# use_amp: true
-use_amp: false
-# infer_slide_max_size: 640
+
+use_amp: true
+# use_amp: false
 
 # dataset and data loader settings
 datasets:
@@ -27,15 +26,15 @@ datasets:
     # mean: [0.485, 0.456, 0.406]
     # std: [0.229, 0.224, 0.225]
 
-    gt_size: [640, 480]  # [weight, height]
+    gt_size: [600, 400]  # [weight, height]
     use_hflip: true
     # use_rot: true
     use_rot: false  # if weight != height, then use_rot must be false
 
     # data loader
     num_worker_per_gpu: 4
-    # batch_size_per_gpu: 3   # amp训练可以设置为3
-    batch_size_per_gpu: 2
+    batch_size_per_gpu: 4  
+    # batch_size_per_gpu: 2
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
 
@@ -57,7 +56,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: experiments/RFEPFusion_LLIE_vi_NTIRE2024_pretrained_archived_20250223_174536/best_psnr_2500_psnr_18.184_ssim_0.796.pth
+  pretrain_network_g: ~
   strict_load_g: true
   resume_state: ~
 
@@ -78,16 +77,16 @@ train:
   #   mixup_beta: 1.2
   #   use_identity: true
 
-  total_iter: 90000  
+  total_iter: 60000  
   # total_epoch: 500
   warmup_iter: -1  # no warm up
   scheduler:
     type: OneCycleLR
-    max_lr: !!float 2e-4
-    total_steps: 90000  # 保持和total_iter一致 
+    max_lr: !!float 4e-4
+    total_steps: 60000  # 保持和total_iter一致 
     pct_start: 0.2
     div_factor: 10
-    final_div_factor: 200
+    final_div_factor: 400
     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
 
   # losses
@@ -96,10 +95,10 @@ train:
     type: L1Loss
     loss_weight: 1.0
     reduction: mean
-  color_loss:
-    type: ColorLoss
-    loss_weight: 0.4
-    reduction: mean
+  # color_loss:
+  #   type: ColorLoss
+  #   loss_weight: 0.4
+  #   reduction: mean
   
 
 # validation settings

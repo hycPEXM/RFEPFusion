@@ -3,9 +3,11 @@ from torchvision.transforms.functional import normalize
 
 from basicsr.data.data_util import paired_paths_from_folder, paired_paths_from_lmdb, paired_paths_from_meta_info_file
 from basicsr.data.transforms import augment, paired_random_crop
-from basicsr.utils import FileClient, bgr2ycbcr, imfrombytes, img2tensor
+from basicsr.utils import FileClient, bgr2ycbcr, imfrombytes, img2tensor, scandir
+# from basicsr.utils import img2tensor, scandir
 from basicsr.utils.registry import DATASET_REGISTRY
 
+import os
 
 @DATASET_REGISTRY.register()
 class PairedImageDataset(data.Dataset):
@@ -105,6 +107,29 @@ class PairedImageDataset(data.Dataset):
     def __len__(self):
         return len(self.paths)
 
+def paired_paths_from_folder_LLIE(dataroot, dataset_list, folders, keys, filename_tmpl):
+    assert len(folders) == 2, ('The len of folders should be 2 with [input_folder, gt_folder]. '
+                               f'But got {len(folders)}')
+    assert len(keys) == 2, f'The len of keys should be 2 with [input_key, gt_key]. But got {len(keys)}'
+    lq_key, gt_key = keys
+    vi_folder, enhanced_folder = folders
+    paths = []
+    for dataset in dataset_list:
+        lq_folder = os.path.join(dataroot, dataset['dataset_name'], vi_folder)
+        gt_folder = os.path.join(dataroot, dataset['dataset_name'], enhanced_folder)
+        lq_paths = list(scandir(lq_folder))
+        gt_paths = list(scandir(gt_folder))
+        assert len(lq_paths) == len(gt_paths), (f'{lq_key} and {gt_key} datasets have different number of images: '
+                                               f'{len(lq_paths)}, {len(gt_paths)}.')        
+        for gt_path in gt_paths:
+            basename, ext = os.path.splitext(os.path.basename(gt_path))
+            lq_name = f'{filename_tmpl.format(basename)}{ext}'
+            lq_path = os.path.join(lq_folder, lq_name)
+            assert lq_name in lq_paths, f'{lq_name} is not in {lq_key}_paths.'
+            gt_path = os.path.join(gt_folder, gt_path)
+            paths.extend([dict([(f'{lq_key}_path', lq_path), (f'{gt_key}_path', gt_path)])] * int(dataset['mult_ratio']))
+    return paths
+
 
 @DATASET_REGISTRY.register()
 class PairedImageDatasetLLIE(data.Dataset):
@@ -117,7 +142,12 @@ class PairedImageDatasetLLIE(data.Dataset):
         self.mean = opt['mean'] if 'mean' in opt else None
         self.std = opt['std'] if 'std' in opt else None
 
-        self.gt_folder, self.lq_folder = opt['dataroot_gt'], opt['dataroot_lq']
+        # self.gt_folder, self.lq_folder = opt['dataroot_gt'], opt['dataroot_lq']
+        dataroot = self.opt.get('dataroot')
+        lq_folder_name = self.opt.get('vi_dir_name')
+        gt_folder_name = self.opt.get('vi_enhance_dir_name')
+        dataset_list = self.opt.get('dataset_list')        
+
         if 'filename_tmpl' in opt:
             self.filename_tmpl = opt['filename_tmpl']
         else:
@@ -131,7 +161,7 @@ class PairedImageDatasetLLIE(data.Dataset):
             self.paths = paired_paths_from_meta_info_file([self.lq_folder, self.gt_folder], ['lq', 'gt'],
                                                           self.opt['meta_info_file'], self.filename_tmpl)
         else:
-            self.paths = paired_paths_from_folder([self.lq_folder, self.gt_folder], ['lq', 'gt'], self.filename_tmpl)
+            self.paths = paired_paths_from_folder_LLIE(dataroot, dataset_list, [lq_folder_name, gt_folder_name], ['lq', 'gt'], self.filename_tmpl)
 
     def __getitem__(self, index):
         if self.file_client is None:
