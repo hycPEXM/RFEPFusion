@@ -66,7 +66,8 @@ class Illumination_Estimator(nn.Module):
         #   n_fea_middle = 64
         super(Illumination_Estimator, self).__init__()
 
-        self.conv1 = nn.Conv2d(n_fea_in, n_fea_middle, kernel_size=3, padding=1, bias=True)
+        self.conv1 = nn.Conv2d(n_fea_in, n_fea_middle//2, kernel_size=3, padding=1, bias=True)
+        self.conv2 = nn.Conv2d(n_fea_middle//2, n_fea_middle, kernel_size=3, padding=1, bias=True)
 
         self.depth_conv = nn.Conv2d(
             n_fea_middle, n_fea_middle, kernel_size=5, padding=2, bias=True, groups=n_fea_in)
@@ -82,9 +83,11 @@ class Illumination_Estimator(nn.Module):
         
         mean_c = img.mean(dim=1).unsqueeze(1)  # illumination prior
         input = torch.cat([img,mean_c], dim=1)
+        del mean_c
 
-        x_1 = self.conv1(input)
-        illu_fea = self.depth_conv(x_1)
+        input = self.conv2(self.conv1(input))
+        illu_fea = self.depth_conv(input)
+        del input
         illu_map = self.pw_conv(illu_fea)
         return illu_fea, illu_map
 
@@ -121,6 +124,45 @@ class IG_MHA(nn.Module):
         )
         self.dim = dim
 
+    # def forward(self, x_in, illu_fea_trans):
+    #     """
+    #     x_in: [b,h,w,c]         # input_feature
+    #     illu_fea: [b,h,w,c]         # mask shift? 为什么是 b, h, w, c?
+    #     return out: [b,h,w,c]
+    #     """
+    #     b, h, w, c = x_in.shape
+    #     # x = x_in.reshape(b, h * w, c)
+    #     x = x_in.view(b, h * w, c)
+    #     q_inp = self.to_q(x)  # b,hw,c
+    #     k_inp = self.to_k(x)  # b,hw,c
+    #     v_inp = self.to_v(x)  # b,hw,c
+    #     illu_attn = illu_fea_trans # illu_fea->illu_fea_trans: b,c,h,w -> b,h,w,c
+
+    #     # from einops import rearrange
+    #     #  q, k, v, illu_attn = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.num_heads),
+    #                             #  (q_inp, k_inp, v_inp, illu_attn.flatten(1, 2)))
+    #     n = h*w
+    #     q = q_inp.reshape(b, n, self.num_heads, c // self.num_heads).permute(0, 2, 1, 3).contiguous()
+    #     k = k_inp.reshape(b, n, self.num_heads, c // self.num_heads).permute(0, 2, 1, 3).contiguous()   
+    #     v = v_inp.reshape(b, n, self.num_heads, c // self.num_heads).permute(0, 2, 1, 3).contiguous()
+    #     illu_attn = illu_attn.flatten(1, 2).reshape(b, n, self.num_heads, c // self.num_heads).permute(0, 2, 1, 3).contiguous()
+    #     # b,heads,hw,dim_head
+
+    #     v = v * illu_attn
+    #     k = k.transpose(-2, -1).contiguous()
+    #     q = F.normalize(q, dim=-2, p=2)
+    #     k = F.normalize(k, dim=-1, p=2)
+    #     attn = (k @ q)   # A = K^T*Q   (b,heads,dim_head,hw) * (b,heads,hw,dim_head) -> (b,heads,dim_head,dim_head)
+    #     attn = attn * self.rescale
+    #     attn = attn.softmax(dim=-1)
+    #     x = v@attn # b,heads,hw,dim_head
+    #     x = x.transpose(1,2).contiguous().view(b,n,c)
+    #     out_c = self.proj(x).view(b, h, w, c)
+    #     out_p = self.pos_emb(v_inp.view(b, h, w, c).permute(
+    #         0, 3, 1, 2).contiguous()).permute(0, 2, 3, 1).contiguous()
+    #     out = out_c + out_p
+
+    #     return out  # b,h,w,c
     def forward(self, x_in, illu_fea_trans):
         """
         x_in: [b,h,w,c]         # input_feature
@@ -135,6 +177,8 @@ class IG_MHA(nn.Module):
         v_inp = self.to_v(x)  # b,hw,c
         illu_attn = illu_fea_trans # illu_fea->illu_fea_trans: b,c,h,w -> b,h,w,c
 
+        # del x
+
         # from einops import rearrange
         #  q, k, v, illu_attn = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.num_heads),
                                 #  (q_inp, k_inp, v_inp, illu_attn.flatten(1, 2)))
@@ -143,24 +187,35 @@ class IG_MHA(nn.Module):
         k = k_inp.reshape(b, n, self.num_heads, c // self.num_heads).permute(0, 2, 1, 3).contiguous()   
         v = v_inp.reshape(b, n, self.num_heads, c // self.num_heads).permute(0, 2, 1, 3).contiguous()
         illu_attn = illu_attn.flatten(1, 2).reshape(b, n, self.num_heads, c // self.num_heads).permute(0, 2, 1, 3).contiguous()
-        # b,heads,hw,dim_head
+        # b,heads,hw,dim_head          
 
         v = v * illu_attn
+        out_p = self.pos_emb(v_inp.view(b, h, w, c).permute(
+            0, 3, 1, 2).contiguous()).permute(0, 2, 3, 1).contiguous()
+        
+        del q_inp, k_inp, v_inp, illu_attn  
+
         k = k.transpose(-2, -1).contiguous()
         q = F.normalize(q, dim=-2, p=2)
         k = F.normalize(k, dim=-1, p=2)
         attn = (k @ q)   # A = K^T*Q   (b,heads,dim_head,hw) * (b,heads,hw,dim_head) -> (b,heads,dim_head,dim_head)
+        
+        # del k, q
+
         attn = attn * self.rescale
         attn = attn.softmax(dim=-1)
         x = v@attn # b,heads,hw,dim_head
+
+        del q, k, v, attn
+
         x = x.transpose(1,2).contiguous().view(b,n,c)
         out_c = self.proj(x).view(b, h, w, c)
-        out_p = self.pos_emb(v_inp.view(b, h, w, c).permute(
-            0, 3, 1, 2).contiguous()).permute(0, 2, 3, 1).contiguous()
-        out = out_c + out_p
 
-        return out  # b,h,w,c
+        del x
+        
+        # out = out_c + out_p
 
+        return out_c + out_p  # b,h,w,c
 
 class FeedForward(nn.Module):
     def __init__(self, dim, mult=4):
@@ -215,10 +270,11 @@ class IGAB(nn.Module):
 
 
 class LLIE_Encoder(nn.Module):
+    # heads_num defaults to 8!
     def __init__(self, backbone_settings = small_settings, in_channels=3):
-        super(LLIE_Encoder, self).__init__()
-        self.backbone_settings = backbone_settings
+        super(LLIE_Encoder, self).__init__()        
         mscan = MSCAN(**backbone_settings)
+        self.depths_in_stage = backbone_settings['depths'][0]
         self.illumination_estimator = Illumination_Estimator(n_fea_middle=backbone_settings['embed_dims'][0])
         self.conv_bridge = nn.Conv2d(in_channels, backbone_settings['embed_dims'][0], kernel_size=3, padding=1, bias=True)
         self.block1 = mscan.block1
@@ -228,8 +284,9 @@ class LLIE_Encoder(nn.Module):
 
     def forward(self, vi):
         illu_guide, light_up_map = self.illumination_estimator(vi)
-        # illu_guide: b,c=64,h,w; light_up_map: b,c=3,h,w
+        # illu_guide: b,c=64,h,w; light_up_map: b,c=3,h,w        
         light_up = vi * light_up_map  # I_light_up = R + C, where C is the corruption term to be eliminated in following stages
+        del light_up_map
         light_up = self.conv_bridge(light_up)  # b,c=64,h,w
         b, c, h, w = light_up.shape
         # light_up = light_up.flatten(2).transpose(1, 2).contiguous()  # b,hw,c=64
@@ -244,7 +301,8 @@ class LLIE_Encoder(nn.Module):
         light_up = light_up.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
         light_up = self.IGAB2(light_up, illu_guide)
         # Don't forget that the first stage of small setting is 2, not 3
-        if self.backbone_settings['depths'][0] == 3:
+        del illu_guide
+        if self.depths_in_stage == 3:
             # light_up = light_up.view(b, h * w, c)
             light_up = light_up.permute(0, 3, 1, 2).contiguous()  # b,c,h,w
             light_up = self.block1[2](light_up, h, w)
@@ -306,10 +364,20 @@ class IrReconstructionDecoder(nn.Module):
 
 @ARCH_REGISTRY.register()
 class LLIE_VI(nn.Module):
-    def __init__(self):
+    def __init__(self, backbone_settings = 'small'):
         super(LLIE_VI, self).__init__()
-        self.vi_encoder = LLIE_Encoder()
-        self.vi_decoder = LLIE_Decoder()
+        if backbone_settings == 'small':
+            self.backbone_settings = small_settings 
+        elif backbone_settings == 'tiny':
+            self.backbone_settings = tiny_settings
+        elif backbone_settings == 'base':
+            self.backbone_settings = base_settings
+        elif backbone_settings == 'hyc_small':
+            self.backbone_settings = hyc_small_settings
+        # elif backbone_settings == 'hyc_tiny':
+        #     self.backbone_settings = hyc_tiny_settings
+        self.vi_encoder = LLIE_Encoder(backbone_settings=self.backbone_settings)
+        self.vi_decoder = LLIE_Decoder(input_channels=self.backbone_settings['embed_dims'][0])
 
     def forward(self, vi):
         vi_out = self.vi_decoder(self.vi_encoder(vi))
@@ -317,10 +385,20 @@ class LLIE_VI(nn.Module):
 
 @ARCH_REGISTRY.register()
 class LLIE_IR(nn.Module):
-    def __init__(self):
+    def __init__(self, backbone_settings = 'tiny'):
         super(LLIE_IR, self).__init__()
-        self.ir_encoder = IrReconstructionEncoder()
-        self.ir_decoder = IrReconstructionDecoder()
+        if backbone_settings == 'small':
+            self.backbone_settings = small_settings 
+        elif backbone_settings == 'tiny':
+            self.backbone_settings = tiny_settings
+        elif backbone_settings == 'base':
+            self.backbone_settings = base_settings
+        elif backbone_settings == 'hyc_small':
+            self.backbone_settings = hyc_small_settings
+        # elif backbone_settings == 'hyc_tiny':
+        #     self.backbone_settings = hyc_tiny_settWings
+        self.ir_encoder = IrReconstructionEncoder(backbone_settings=self.backbone_settings)
+        self.ir_decoder = IrReconstructionDecoder(input_channels=self.backbone_settings['embed_dims'][0])
     def forward(self, ir):
         ir_out = self.ir_decoder(self.ir_encoder(ir))
         return ir_out

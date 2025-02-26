@@ -9,7 +9,8 @@ manual_seed: 666
 # pad_size: 16  
 # pad_size: 4
 use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
-use_amp: true
+# use_amp: true
+use_amp: false
 infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
 
 # dataset and data loader settings
@@ -42,8 +43,8 @@ datasets:
     use_rot: false  # if weight != height, then use_rot must be false
 
     # data loader
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    num_worker_per_gpu: 6
+    batch_size_per_gpu: 6
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
 
@@ -60,6 +61,7 @@ datasets:
 # network structures
 network_g:
   type: LLIE_VI
+  # backbone_settings: small
 
 # path
 path:
@@ -72,8 +74,10 @@ train:
   # ema_decay: 0.999
   optim_g:
     type: AdamW
-    lr: !!float 2e-4  # 初始学习率，实际上不会被用到
-    weight_decay: 0.005
+    # type: Adam
+    lr: !!float 4e-4  # 初始学习率，实际上不会被用到
+    weight_decay: 0.0001
+    # weight_decay: 0
     betas: [0.9, 0.99]
 
   use_grad_clip: true
@@ -88,13 +92,16 @@ train:
   # total_epoch: 500
   warmup_iter: -1  # no warm up
   scheduler:
-    type: OneCycleLR
-    max_lr: !!float 4e-4
-    total_steps: 90000  # 保持和total_iter一致 
-    pct_start: 0.2
-    div_factor: 10
-    final_div_factor: 400
+    # type: OneCycleLR
+    # max_lr: !!float 4e-4
+    # total_steps: 90000  # 保持和total_iter一致 
+    # pct_start: 0.2
+    # div_factor: 10
+    # final_div_factor: 400
     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
+    type: MultiStepLR
+    milestones: [40000, 60000, 80000]
+    gamma: 0.2
 
   # losses
   pixel_opt:

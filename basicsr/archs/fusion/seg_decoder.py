@@ -7,6 +7,7 @@ import torch.nn.functional as F
 # from ..builder import HEADS
 # from .decode_head import BaseDecodeHead
 
+__all__ = ['LightHamHead', 'base_settings_decode_head', 'small_settings_decode_head', 'tiny_settings_decode_head']
 
 class ConvModule(nn.Module):
     def __init__(self, 
@@ -27,6 +28,7 @@ class ConvModule(nn.Module):
             padding=padding,
             bias=False if norm_cfg else True
         )
+        # 'Unnecessary conv bias before batch/instance norm'
         
         # 处理标准化层
         if norm_cfg is None:
@@ -70,7 +72,8 @@ class _MatrixDecomposition2DBase(nn.Module):
         self.R = args.setdefault('MD_R', 64)
 
         self.train_steps = args.setdefault('TRAIN_STEPS', 6)
-        self.eval_steps = args.setdefault('EVAL_STEPS', 7)
+        # self.eval_steps = args.setdefault('EVAL_STEPS', 7)
+        self.eval_steps = args.setdefault('EVAL_STEPS', 6)
 
         self.inv_t = args.setdefault('INV_T', 100)
         self.eta = args.setdefault('ETA', 0.9)
@@ -406,13 +409,26 @@ class LightHamHead(nn.Module):
 
         inputs = torch.cat(inputs, dim=1)
         x = self.squeeze(inputs)
-
+        del inputs
         x = self.hamburger(x)  # B,C=(256),H,W
 
         output = self.align(x)
         output = self.cls_seg(output)
         return output, x
 
+
+base_settings_decode_head = dict(
+    in_channels=[128, 320, 512],
+    in_index=[0, 1, 2],
+    channels=512,
+    ham_channels=512,
+    ham_kwargs=dict(MD_R=64),
+    dropout_ratio=0.1,
+    num_classes=9,
+    norm_cfg=dict(type='GN', num_groups=32, requires_grad=True),
+    align_corners=False,
+    input_transform='multiple_select'
+)
 
 small_settings_decode_head = dict(
     in_channels=[128, 320, 512],
@@ -426,3 +442,16 @@ small_settings_decode_head = dict(
     align_corners=False,
     input_transform='multiple_select'
     )
+
+tiny_settings_decode_head = dict(
+    in_channels=[64, 160, 256],
+    in_index=[0, 1, 2],
+    channels=256,
+    ham_channels=256,
+    ham_kwargs=dict(MD_R=16),
+    dropout_ratio=0.1,
+    num_classes=9,
+    norm_cfg=dict(type='GN', num_groups=32, requires_grad=True),
+    align_corners=False,
+    input_transform='multiple_select'
+)

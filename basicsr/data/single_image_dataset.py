@@ -76,3 +76,56 @@ class SingleImageDataset(data.Dataset):
 
     def __len__(self):
         return len(self.paths)
+
+
+@DATASET_REGISTRY.register()
+class SingleImageDatasetLLIE(data.Dataset):
+    def __init__(self, opt):
+        super(SingleImageDataset, self).__init__()
+        self.opt = opt
+        # file client (io backend)
+        self.file_client = None
+        self.io_backend_opt = opt['io_backend']
+        self.mean = opt['mean'] if 'mean' in opt else None
+        self.std = opt['std'] if 'std' in opt else None
+        # self.lq_folder = opt['dataroot_lq']
+
+        # only supports 'disk' backend
+        import os
+        for dataset_name in opt.get('dataset_list'):
+            ir_folder = os.path.join(opt['dataroot_lq'], opt['ir_dir_name'], dataset_name)
+            self.paths += list(scandir(ir_folder, full_path=True))
+        self.paths.sort()
+
+    def __getitem__(self, index):
+        if self.file_client is None:
+            self.file_client = FileClient(self.io_backend_opt.pop('type'), **self.io_backend_opt)
+
+        # load lq image
+        lq_path = self.paths[index]
+        img_bytes = self.file_client.get(lq_path, 'lq')
+        img_lq = imfrombytes(img_bytes, float32=True)        
+
+        # augmentation for training
+        if self.opt['phase'] == 'train':
+            img_lq_temp = img_lq.copy()
+            gt_size = self.opt['gt_size']  # can be a list or an int
+            # random crop
+            _, img_lq = paired_random_crop(img_lq_temp, img_lq, gt_size, 1)
+            # flip, rotation
+            img_lq = augment([img_lq], self.opt['use_hflip'], self.opt['use_rot'])
+            del img_lq_temp
+
+        # color space transform
+        if 'color' in self.opt and self.opt['color'] == 'y':
+            img_lq = rgb2ycbcr(img_lq, y_only=True)[..., None]
+
+        # BGR to RGB, HWC to CHW, numpy to tensor
+        img_lq = img2tensor(img_lq, bgr2rgb=True, float32=True)
+        # normalize
+        if self.mean is not None or self.std is not None:
+            normalize(img_lq, self.mean, self.std, inplace=True)
+        return {'lq': img_lq, 'lq_path': lq_path}
+
+    def __len__(self):
+        return len(self.paths)

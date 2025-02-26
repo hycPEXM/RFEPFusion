@@ -15,10 +15,10 @@ use_amp: true
 # dataset and data loader settings
 datasets:
   train:
-    name: LLIE_vi_NTIRE2024_TrainSet
+    name: LLIE_vi_LOL_TrainSet
     type: PairedImageDataset
-    dataroot_lq: /home/hongyuchen/master_thesis/Retinexformer-master/data/NTIRE/train/input
-    dataroot_gt: /home/hongyuchen/master_thesis/Retinexformer-master/data/NTIRE/train/target
+    dataroot_lq: /home/hongyuchen/master_thesis/LOLdataset/train/low
+    dataroot_gt: /home/hongyuchen/master_thesis/LOLdataset/train/high
     io_backend:
       type: disk
     # 使用 ImageNet 参数进行归一化可能会导致低光图像的特征被压缩或扭曲，从而影响增强效果。底层视觉任务还是不要用ImageNet归一化了
@@ -33,16 +33,16 @@ datasets:
 
     # data loader
     num_worker_per_gpu: 4
-    batch_size_per_gpu: 4  
+    batch_size_per_gpu: 4
     # batch_size_per_gpu: 2
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
 
   val:
-    name: LLIE_vi_NTIRE2024_ValSet
+    name: LLIE_vi_LOL_ValSet
     type: PairedImageDataset
-    dataroot_lq: /home/hongyuchen/master_thesis/Retinexformer-master/data/NTIRE/mini_val/input
-    dataroot_gt: /home/hongyuchen/master_thesis/Retinexformer-master/data/NTIRE/mini_val/target    
+    dataroot_lq: /home/hongyuchen/master_thesis/LOLdataset/test/low
+    dataroot_gt: /home/hongyuchen/master_thesis/LOLdataset/test/high    
     # mean: [0.485, 0.456, 0.406]
     # std: [0.229, 0.224, 0.225]
     # gt_size: [640, 480] # useless in val phase
@@ -56,7 +56,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: ~
+  pretrain_network_g: experiments/RFEPFusion_LLIE_vi_NTIRE2024_pretrained_archived_20250224_155916/best_psnr_80500_psnr_24.182_ssim_0.837.pth
   strict_load_g: true
   resume_state: ~
 

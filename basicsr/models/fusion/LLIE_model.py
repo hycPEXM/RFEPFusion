@@ -50,6 +50,9 @@ class Mixing_Augment:
 
 @MODEL_REGISTRY.register()
 class LLIEModel_VI(BaseModel):
+    '''
+    不使用model_ema
+    '''
     def __init__(self, opt):
         super(LLIEModel_VI, self).__init__(opt)
 
@@ -64,6 +67,10 @@ class LLIEModel_VI(BaseModel):
             param_key = self.opt['path'].get('param_key_g', 'params')
             self.load_network(self.net_g, load_path, self.opt['path'].get('strict_load_g', True), param_key)
 
+        if opt['dist']:
+            print("Turning BatchNorm to SyncBN!")
+            self.net_g = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.net_g)
+
         # ‌Automatic Mixed Precision Training
         self.use_amp = opt.get('use_amp', False) and load_amp
         self.amp_scaler = GradScaler(enabled=self.use_amp)
@@ -72,9 +79,10 @@ class LLIEModel_VI(BaseModel):
         else:
             print('Not using Automatic Mixed Precision')
         
+        self.mixing_flag = False
         mixing_augs = self.opt['train'].get('mixing_augs', None)
         if mixing_augs is not None:
-            self.mixing_flag = self.opt['train'][['mixing_augs'].get('mixup', False)]
+            self.mixing_flag = self.opt['train']['mixing_augs'].get('mixup', False)
             if self.mixing_flag:
                 mixup_beta = self.opt['train']['mixing_augs'].get(
                     'mixup_beta', 1.2)
@@ -417,5 +425,13 @@ class LLIEModel_VI(BaseModel):
         self.save_training_state(epoch, current_iter)
 
 
-# @MODEL_REGISTRY.register()
-# class LLIEModel_IR(BaseModel):
+@MODEL_REGISTRY.register()
+class LLIEModel_IR(LLIEModel_VI):
+    def __init__(self, opt):
+        super().__init__(opt)
+    def feed_data(self, data):
+        self.lq = data['lq'].to(self.device)
+        if 'gt' in data:
+            self.gt = data['gt'].to(self.device)
+        else:
+            self.gt = self.lq.clone()

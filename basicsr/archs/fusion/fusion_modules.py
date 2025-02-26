@@ -19,13 +19,19 @@ class ChannelWeights(nn.Module):
 
     def forward(self, x1, x2):
         B, _, H, W = x1.shape
-        x = torch.cat((x1, x2), dim=1)
-        avg = self.avg_pool(x).view(B, self.dim * 2)
-        max = self.max_pool(x).view(B, self.dim * 2)
-        y = torch.cat((avg, max), dim=1) # B 4C
-        y = self.mlp(y).view(B, self.dim * 2, 1)
-        channel_weights = y.reshape(B, 2, self.dim, 1, 1).permute(1, 0, 2, 3, 4).contiguous() # 2 B C 1 1
-        return channel_weights
+        # x = torch.cat((x1, x2), dim=1)
+        # avg = self.avg_pool(x).view(B, self.dim * 2)
+        # max = self.max_pool(x).view(B, self.dim * 2)
+        # y = torch.cat((avg, max), dim=1) # B 4C
+        # y = self.mlp(y).view(B, self.dim * 2, 1)
+        # channel_weights = y.reshape(B, 2, self.dim, 1, 1).permute(1, 0, 2, 3, 4).contiguous() # 2 B C 1 1
+        # return channel_weights
+        channel_weights = torch.cat((x1, x2), dim=1)
+        channel_weights = torch.cat((self.avg_pool(channel_weights).view(B, self.dim * 2), \
+                                     self.max_pool(channel_weights).view(B, self.dim * 2)), dim=1)
+        channel_weights = self.mlp(channel_weights).view(B, self.dim * 2, 1)
+        return channel_weights.reshape(B, 2, self.dim, 1, 1).permute(1, 0, 2, 3, 4).contiguous()
+        
 
 
 class SpatialWeights(nn.Module):
@@ -41,8 +47,9 @@ class SpatialWeights(nn.Module):
     def forward(self, x1, x2):
         B, _, H, W = x1.shape
         x = torch.cat((x1, x2), dim=1) # B 2C H W
-        spatial_weights = self.mlp(x).reshape(B, 2, 1, H, W).permute(1, 0, 2, 3, 4).contiguous() # 2 B 1 H W
-        return spatial_weights
+        # spatial_weights = self.mlp(x).reshape(B, 2, 1, H, W).permute(1, 0, 2, 3, 4).contiguous() # 2 B 1 H W
+        # return spatial_weights
+        return self.mlp(x).reshape(B, 2, 1, H, W).permute(1, 0, 2, 3, 4).contiguous()
 
 # Channel-Spatial Attention Cross-Modality Rectification(Information Exchange and Complemention) Module
 class CSA_CMR_Module(nn.Module):
@@ -83,8 +90,10 @@ class CrossModalAttention(nn.Module):
 
         ctx1 = (k1.transpose(-2, -1).contiguous() @ v1) * self.scale
         ctx1 = ctx1.softmax(dim=-2)
+        # del k1, v1
         ctx2 = (k2.transpose(-2, -1).contiguous() @ v2) * self.scale
         ctx2 = ctx2.softmax(dim=-2)
+        # del k2, v2
 
         x1 = (q1 @ ctx2).permute(0, 2, 1, 3).reshape(B, N, C).contiguous() 
         x2 = (q2 @ ctx1).permute(0, 2, 1, 3).reshape(B, N, C).contiguous() 
@@ -135,10 +144,11 @@ class FeatureFusionModule(nn.Module):
     def forward(self, x, H, W):
         B, N, _C = x.shape
         x = x.permute(0, 2, 1).reshape(B, _C, H, W).contiguous()
-        residual = self.residual(x)
+        # residual = self.residual(x)
         x = self.channel_embed(x)
-        out = self.norm(residual + x)
-        return out
+        # out = self.norm(residual + x)
+        # return out
+        return self.norm(x + self.residual(x))
 
 # Cross Modal Attention Fusion Module
 class CMAF_Module(nn.Module):
@@ -190,9 +200,9 @@ class SIM(nn.Module):
         gamma = self.mlp_gamma(actv)
         beta = self.mlp_beta(actv)
         # apply scale and bias
-        out = self.bn(normalized * (1 + gamma)) + beta
-
-        return out
+        # out = self.bn(normalized * (1 + gamma)) + beta
+        # return out
+        return self.bn(normalized * (1 + gamma)) + beta
 
 class MultiScaleFusion(nn.Module):
     def __init__(self, in_channels, mid_channels=32, out_channels=3, dilation_scales=[1, 2, 4]):

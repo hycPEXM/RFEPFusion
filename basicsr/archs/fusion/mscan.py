@@ -76,7 +76,7 @@ class AttentionModule(nn.Module):
         self.conv3 = nn.Conv2d(dim, dim, 1)
 
     def forward(self, x):
-        u = x.clone()
+        # u = x.clone()
         attn = self.conv0(x)
 
         attn_0 = self.conv0_1(attn)
@@ -91,7 +91,8 @@ class AttentionModule(nn.Module):
 
         attn = self.conv3(attn)
 
-        return attn * u
+        # return attn * u
+        return attn * x
 
 
 class SpatialAttention(nn.Module):
@@ -235,6 +236,17 @@ tiny_settings = {
     'norm_layer': nn.BatchNorm2d
 }
 
+# hyc_tiny_settings = {
+#     'in_chans': 3,
+#     'embed_dims': [32, 64, 160, 256],
+#     'mlp_ratios': [4, 4, 4, 4],
+#     'drop_rate': 0.,
+#     'drop_path_rate': 0.1,
+#     'depths': [3, 3, 6, 3],
+#     'num_stages': 4,
+#     'norm_layer': nn.BatchNorm2d
+# }
+
 small_settings = {
     'in_chans': 3,
     'embed_dims': [64, 128, 320, 512],        
@@ -242,6 +254,39 @@ small_settings = {
     'drop_rate': 0.,
     'drop_path_rate': 0.1,
     'depths': [2, 2, 4, 2],
+    'num_stages': 4,
+    'norm_layer': nn.BatchNorm2d
+}
+
+hyc_small_settings = {
+    'in_chans': 3,
+    'embed_dims': [64, 128, 320, 512],        
+    'mlp_ratios': [4, 4, 3, 3],
+    'drop_rate': 0.,
+    'drop_path_rate': 0.1,
+    'depths': [3, 3, 5, 2],
+    'num_stages': 4,
+    'norm_layer': nn.BatchNorm2d
+}
+
+# hyc_small_settings = {
+#     'in_chans': 3,
+#     'embed_dims': [64, 128, 320, 512],        
+#     'mlp_ratios': [6, 6, 4, 4],
+#     'drop_rate': 0.,
+#     'drop_path_rate': 0.1,
+#     'depths': [3, 3, 6, 3],
+#     'num_stages': 4,
+#     'norm_layer': nn.BatchNorm2d
+# }
+
+base_settings = {
+    'in_chans': 3,
+    'embed_dims': [64, 128, 320, 512],        
+    'mlp_ratios': [8, 8, 4, 4],
+    'drop_rate': 0.,
+    'drop_path_rate': 0.1,
+    'depths': [3, 3, 12, 3],
     'num_stages': 4,
     'norm_layer': nn.BatchNorm2d
 }

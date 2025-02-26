@@ -1,6 +1,6 @@
 # general settings
-name: RFEPFusion_LLIE_ir
-model_type: LLIEModel_IR
+name: RFEPFusion_LLIE_vi_LOL_pretrained_hyc_small
+model_type: LLIEModel_VI
 scale: 1
 num_gpu: 5
 manual_seed: 666
@@ -9,22 +9,16 @@ manual_seed: 666
 # pad_size: 16  
 # auto_resume: true
 
-infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
-# use_amp: true
-use_amp: false
+use_amp: true
+# use_amp: false
 
 # dataset and data loader settings
 datasets:
   train:
-    name: LLIE_ir_TrainSet
-    type: SingleImageDatasetLLIE
-    dataroot_lq: /home/hongyuchen/master_thesis/nighttime-for-LLIE-v2
-    ir_dir_name: ir
-    dataset_list:
-      - LLVIP
-      - MSRS
-      - M3FD
-      - RoadScene
+    name: LLIE_vi_LOL_TrainSet
+    type: PairedImageDataset
+    dataroot_lq: /home/hongyuchen/master_thesis/LOLdataset/train/low
+    dataroot_gt: /home/hongyuchen/master_thesis/LOLdataset/train/high
     io_backend:
       type: disk
     # 使用 ImageNet 参数进行归一化可能会导致低光图像的特征被压缩或扭曲，从而影响增强效果。底层视觉任务还是不要用ImageNet归一化了
@@ -32,22 +26,24 @@ datasets:
     # mean: [0.485, 0.456, 0.406]
     # std: [0.229, 0.224, 0.225]
 
-    gt_size: [320, 240]  # [weight, height]
+    gt_size: [600, 400]  # [weight, height]
+    # gt_size: 400
     use_hflip: true
     # use_rot: true
     use_rot: false  # if weight != height, then use_rot must be false
 
     # data loader
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 4
     # batch_size_per_gpu: 2
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
 
   val:
-    name: LLIE_ir_ValSet
-    type: SingleImageDataset
-    dataroot_lq: /home/hongyuchen/master_thesis/nighttime-for-LLIE-v2/LLVIP_test/ir      
+    name: LLIE_vi_LOL_ValSet
+    type: PairedImageDataset
+    dataroot_lq: /home/hongyuchen/master_thesis/LOLdataset/test/low
+    dataroot_gt: /home/hongyuchen/master_thesis/LOLdataset/test/high    
     # mean: [0.485, 0.456, 0.406]
     # std: [0.229, 0.224, 0.225]
     # gt_size: [640, 480] # useless in val phase
@@ -57,12 +53,12 @@ datasets:
 
 # network structures
 network_g:
-  type: LLIE_IR
-  # backbone_settings: tiny
+  type: LLIE_VI
+  backbone_settings: hyc_small
 
 # path
 path:
-  pretrain_network_g: experiments/pretrained_models/LLIE_ir_init.pth
+  pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_LLIE_vi_LOL_pretrained_hyc_small_archived_20250226_202922/best_psnr_9000_psnr_23.817_ssim_0.843.pth
   strict_load_g: true
   resume_state: ~
 
@@ -72,8 +68,9 @@ train:
   optim_g:
     type: AdamW
     # type: Adam
-    lr: !!float 4e-4  
-    weight_decay: 0.0001
+    # lr: !!float 2e-4 
+    lr: !!float 3e-4 
+    weight_decay: 0.001
     # weight_decay: 0
     betas: [0.9, 0.99]
 
@@ -85,20 +82,20 @@ train:
   #   mixup_beta: 1.2
   #   use_identity: true
 
-  total_iter: 90000  
+  total_iter: 20000 
   # total_epoch: 500
   warmup_iter: -1  # no warm up
   scheduler:
     # type: OneCycleLR
-    # max_lr: !!float 4e-4
-    # total_steps: 90000  # 保持和total_iter一致 
+    # max_lr: !!float 2.5e-4
+    # total_steps: 20000  # 保持和total_iter一致 
     # pct_start: 0.2
-    # div_factor: 10
-    # final_div_factor: 400
+    # div_factor: 4
+    # final_div_factor: 100
     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
     type: MultiStepLR
-    milestones: [40000, 60000, 80000]
-    gamma: 0.2
+    milestones: [10000, 15000]
+    gamma: 0.1
 
   # losses
   pixel_opt:
@@ -114,7 +111,7 @@ train:
 
 # validation settings
 val:
-  val_freq: !!float 500
+  val_freq: !!float 100
   save_img: false
 
   # pbar: true
@@ -135,8 +132,8 @@ val:
 
 # logging settings
 logger:
-  print_freq: 100
-  save_checkpoint_freq: !!float 500  # 每次验证时保存模型
+  print_freq: 50
+  save_checkpoint_freq: !!float 100  # 每次验证时保存模型
   save_checkpoint_max_num: 10
   use_tb_logger: true
   wandb:  # 不使用wandb

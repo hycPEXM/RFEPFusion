@@ -135,3 +135,5 @@ venv.bak/
 # pretrained/
 hyc_test/
 log/
+docs/
+colab/
