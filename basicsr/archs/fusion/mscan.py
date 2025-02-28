@@ -261,7 +261,7 @@ small_settings = {
 hyc_small_settings = {
     'in_chans': 3,
     'embed_dims': [64, 128, 320, 512],        
-    'mlp_ratios': [4, 4, 3, 3],
+    'mlp_ratios': [6, 6, 3, 3],
     'drop_rate': 0.,
     'drop_path_rate': 0.1,
     'depths': [3, 3, 5, 2],

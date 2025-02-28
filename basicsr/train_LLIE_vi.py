@@ -162,12 +162,16 @@ def train_pipeline(root_path):
 
             current_iter += 1
             if current_iter > total_iters:
-                break
-            # update learning rate
-            model.update_learning_rate(current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
+                break            
             # training
             model.feed_data(train_data)
             model.optimize_parameters(current_iter)
+            """
+            UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
+            warnings.warn("Detected call of `lr_scheduler.step()` before `optimizer.step()`. "
+            """
+            # update learning rate
+            model.update_learning_rate(current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
             iter_timer.record()
             if current_iter == 1:
                 # reset start time in msg_logger for more accurate eta_time

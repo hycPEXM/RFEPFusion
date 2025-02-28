@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 from basicsr.utils.registry import ARCH_REGISTRY
 
+import os
+
 from .mscan import StemConv, tiny_settings, small_settings, base_settings, hyc_small_settings, MSCAN
 from .LLIE_arch import LLIE_Encoder, IrReconstructionEncoder
 from .fusion_modules import CSA_CMR_Module, CMAF_Module, SIM, MultiScaleFusion
@@ -14,7 +16,9 @@ from .net_utils import UpsampleConv
 # symmetric fusion modules
 @ARCH_REGISTRY.register()
 class RFEPFusion_no_register(nn.Module):
-    def __init__(self, ir_settings = 'tiny', vi_settings = 'small', stem_scale = 2):
+    def __init__(self, ir_settings = 'tiny', vi_settings = 'small', stem_scale = 2, 
+                 ir_encoder_pretrained_path = '/home/hongyuchen/master_thesis/RFEPFusion/experiments/pretrained_models/ir_encoder.pth',
+                 vi_encoder_pretrained_path = '/home/hongyuchen/master_thesis/RFEPFusion/experiments/pretrained_models/vi_encoder.pth'):
         super(RFEPFusion_no_register, self).__init__()
         if ir_settings == 'small':
             self.ir_settings = small_settings 
@@ -33,10 +37,22 @@ class RFEPFusion_no_register(nn.Module):
             self.vi_settings = base_settings
         elif vi_settings == 'hyc_small':
             self.vi_settings = hyc_small_settings
+        
         vi_backbone = MSCAN(**self.vi_settings)
         ir_backbone = MSCAN(**self.ir_settings)
-        self.vi_encoder = LLIE_Encoder(backbone_settings=self.vi_settings)
-        self.ir_encoder = IrReconstructionEncoder(backbone_settings=self.ir_settings)
+        
+        if not os.path.exists(vi_encoder_pretrained_path):
+            raise FileNotFoundError('LLIE_vi_encoder pretrained weights not found')
+        if not os.path.exists(ir_encoder_pretrained_path):
+            raise FileNotFoundError('LLIE_ir_encoder pretrained weights not found')
+        self.vi_encoder = LLIE_Encoder(backbone_settings=self.vi_settings).load_state_dict(torch.load(vi_encoder_pretrained_path), strict=True)
+        self.ir_encoder = IrReconstructionEncoder(backbone_settings=self.ir_settings).load_state_dict(torch.load(ir_encoder_pretrained_path), strict=True)
+        # 冻结LLIE encoder的参数
+        for param in self.vi_encoder.parameters():
+            param.requires_grad = False
+        for param in self.ir_encoder.parameters():
+            param.requires_grad = False
+        
         if stem_scale == 2:
             self.stem_ir = nn.Conv2d(in_channels=self.ir_settings['embed_dims'][0], 
                                      out_channels=self.ir_settings['embed_dims'][0], 

@@ -10,36 +10,15 @@ from basicsr.utils.registry import DATASET_REGISTRY
 
 @DATASET_REGISTRY.register()
 class MSRSDataset(data.Dataset):
-    """Paired image dataset for image restoration.
-
-    Read LQ (Low Quality, e.g. LR (Low Resolution), blurry, noisy, etc) and GT image pairs.
-
-    There are three modes:
-
-    1. **lmdb**: Use lmdb files. If opt['io_backend'] == lmdb.
-    2. **meta_info_file**: Use meta information file to generate paths. \
-        If opt['io_backend'] != lmdb and opt['meta_info_file'] is not None.
-    3. **folder**: Scan folders to generate paths. The rest.
-
-    Args:
-        opt (dict): Config for train datasets. It contains the following keys:
-        dataroot_gt (str): Data root path for gt.
-        dataroot_lq (str): Data root path for lq.
-        meta_info_file (str): Path for meta information file.
-        io_backend (dict): IO backend type and other kwarg.
-        filename_tmpl (str): Template for each filename. Note that the template excludes the file extension.
-            Default: '{}'.
-        gt_size (int): Cropped patched size for gt patches.
-        use_hflip (bool): Use horizontal flips.
-        use_rot (bool): Use rotation (use vertical flip and transposing h and w for implementation).
-        scale (bool): Scale, which will be added automatically.
-        phase (str): 'train' or 'val'.
-    """
-
     def __init__(self, opt):
-        super(PairedImageDataset, self).__init__()
+        super(MSRSDataset, self).__init__()
         self.opt = opt
-        # file client (io backend)
+        
+        # if self.opt['phase'] == 'train'
+
+
+
+
         self.file_client = None
         self.io_backend_opt = opt['io_backend']
         self.mean = opt['mean'] if 'mean' in opt else None

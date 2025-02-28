@@ -203,7 +203,7 @@ class LLIEModel_VI(BaseModel):
             scale_factor = self.amp_scaler.get_scale()
             if scale_factor < 0.001:
                 logger = get_root_logger()
-                logger.info(f'Current scale factor is too small: {self.amp_scaler.get_scale():.4f}, meaning that the loss/gradient is too large')
+                logger.info(f'Current scale factor is too small: {self.amp_scaler.get_scale():.6f}, meaning that the loss/gradient is too large')
             self.amp_scaler.step(self.optimizer_g)
             self.amp_scaler.update()
         else:
@@ -233,8 +233,8 @@ class LLIEModel_VI(BaseModel):
         w_stride, h_stride = self.opt['datasets']['train']['gt_size']
         h_crop = h_stride  # crop可以大于stride，patch之间会有一定重叠，可能会带来更好的效果，但是会增加推理时间
         w_crop = w_stride
-        bs, _, h_img, w_img = self.lq.shape
-        out_channels = 3
+        bs, out_channels, h_img, w_img = self.lq.shape
+        # out_channels = 3        
         h_grids = max(h_img - h_crop + h_stride - 1, 0) // h_stride + 1
         w_grids = max(w_img - w_crop + w_stride - 1, 0) // w_stride + 1
         preds = torch.zeros(bs, out_channels, h_img, w_img)
@@ -330,17 +330,20 @@ class LLIEModel_VI(BaseModel):
         for idx, val_data in enumerate(dataloader):
             img_name = osp.splitext(osp.basename(val_data['lq_path'][0]))[0]
             self.feed_data(val_data)
+            
             max_img_size = max(self.gt.shape[2:])
             if max_img_size <= self.opt.get('infer_slide_max_size', 640):
                 self.test()
             else:
                 self.test_slide()
 
+            # print(self.gt.shape, self.lq.shape, self.output.shape)
+
             visuals = self.get_current_visuals()
-            sr_img = tensor2img([visuals['result']])
+            sr_img = tensor2img([visuals['result']], rgb2bgr=self.opt['datasets']['val'].get('use_RGB', True))
             metric_data['img'] = sr_img
             if 'gt' in visuals:
-                gt_img = tensor2img([visuals['gt']])
+                gt_img = tensor2img([visuals['gt']], rgb2bgr=self.opt['datasets']['val'].get('use_RGB', True))
                 metric_data['img2'] = gt_img
                 del self.gt
 

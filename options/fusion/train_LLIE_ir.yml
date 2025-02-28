@@ -32,14 +32,14 @@ datasets:
     # mean: [0.485, 0.456, 0.406]
     # std: [0.229, 0.224, 0.225]
 
-    gt_size: [320, 240]  # [weight, height]
+    gt_size: [384, 288]  # [weight, height]
     use_hflip: true
     # use_rot: true
     use_rot: false  # if weight != height, then use_rot must be false
 
     # data loader
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    num_worker_per_gpu: 6
+    batch_size_per_gpu: 6
     # batch_size_per_gpu: 2
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
@@ -47,7 +47,8 @@ datasets:
   val:
     name: LLIE_ir_ValSet
     type: SingleImageDataset
-    dataroot_lq: /home/hongyuchen/master_thesis/nighttime-for-LLIE-v2/LLVIP_test/ir      
+    dataroot_lq: /home/hongyuchen/master_thesis/nighttime-for-LLIE-v2/LLVIP_test/ir
+    use_RGB: false
     # mean: [0.485, 0.456, 0.406]
     # std: [0.229, 0.224, 0.225]
     # gt_size: [640, 480] # useless in val phase
@@ -73,7 +74,7 @@ train:
     type: AdamW
     # type: Adam
     lr: !!float 4e-4  
-    weight_decay: 0.0001
+    weight_decay: 0.0005
     # weight_decay: 0
     betas: [0.9, 0.99]
 

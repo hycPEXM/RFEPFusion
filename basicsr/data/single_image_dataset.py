@@ -51,7 +51,10 @@ class SingleImageDataset(data.Dataset):
         # load lq image
         lq_path = self.paths[index]
         img_bytes = self.file_client.get(lq_path, 'lq')
-        img_lq = imfrombytes(img_bytes, float32=True)        
+        if self.opt.get('use_RGB', True):
+            img_lq = imfrombytes(img_bytes, float32=True)
+        else:
+            img_lq = imfrombytes(img_bytes, flag='grayscale', float32=True)
 
         # augmentation for training
         if self.opt['phase'] == 'train':
@@ -66,7 +69,9 @@ class SingleImageDataset(data.Dataset):
         # color space transform
         if 'color' in self.opt and self.opt['color'] == 'y':
             img_lq = rgb2ycbcr(img_lq, y_only=True)[..., None]
-
+        
+        if img_lq.ndim == 2:
+            img_lq = img_lq[..., None]
         # BGR to RGB, HWC to CHW, numpy to tensor
         img_lq = img2tensor(img_lq, bgr2rgb=True, float32=True)
         # normalize
@@ -81,7 +86,7 @@ class SingleImageDataset(data.Dataset):
 @DATASET_REGISTRY.register()
 class SingleImageDatasetLLIE(data.Dataset):
     def __init__(self, opt):
-        super(SingleImageDataset, self).__init__()
+        super(SingleImageDatasetLLIE, self).__init__()
         self.opt = opt
         # file client (io backend)
         self.file_client = None
@@ -91,9 +96,10 @@ class SingleImageDatasetLLIE(data.Dataset):
         # self.lq_folder = opt['dataroot_lq']
 
         # only supports 'disk' backend
+        self.paths = []
         import os
         for dataset_name in opt.get('dataset_list'):
-            ir_folder = os.path.join(opt['dataroot_lq'], opt['ir_dir_name'], dataset_name)
+            ir_folder = os.path.join(opt['dataroot_lq'], dataset_name, opt['ir_dir_name'])
             self.paths += list(scandir(ir_folder, full_path=True))
         self.paths.sort()
 
@@ -104,7 +110,14 @@ class SingleImageDatasetLLIE(data.Dataset):
         # load lq image
         lq_path = self.paths[index]
         img_bytes = self.file_client.get(lq_path, 'lq')
-        img_lq = imfrombytes(img_bytes, float32=True)        
+        img_lq = imfrombytes(img_bytes, flag='grayscale', float32=True)
+        # img_lq = img_lq[..., None]        # numpy.expand_dims()
+        # print(img_lq.shape)
+
+        # print(img_lq.shape)
+        # if img_lq.shape[2] == 3:
+        #     img_lq = img_lq.dot([0.2989, 0.5870, 0.1140])
+        #     print("after:", img_lq.shape)
 
         # augmentation for training
         if self.opt['phase'] == 'train':
@@ -121,7 +134,11 @@ class SingleImageDatasetLLIE(data.Dataset):
             img_lq = rgb2ycbcr(img_lq, y_only=True)[..., None]
 
         # BGR to RGB, HWC to CHW, numpy to tensor
-        img_lq = img2tensor(img_lq, bgr2rgb=True, float32=True)
+        # print(img_lq.shape)
+        # paired_random_crop里的cv2.resize会对单通道灰度图进行squeeze，所以扩充维度应该放在这个位置
+        if img_lq.ndim == 2:
+            img_lq = img_lq[..., None] 
+        img_lq = img2tensor(img_lq, bgr2rgb=False, float32=True)
         # normalize
         if self.mean is not None or self.std is not None:
             normalize(img_lq, self.mean, self.std, inplace=True)

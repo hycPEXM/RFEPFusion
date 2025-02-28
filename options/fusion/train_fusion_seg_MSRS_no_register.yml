@@ -17,10 +17,11 @@ datasets:
   train:
     name: fusion_seg_no_reg_TrainSet
     type: MSRSDataset
-    dataroot: /Data/dataset/MSRSdataset/train/
+    dataroot: /home/hongyuchen/master_thesis/MSRSdataset/train/
     vi_dir_name: vi
     ir_dir_name: ir
-    seg_dir_name: Segmentation_labels    
+    seg_dir_name: Segmentation_labels
+    mask_dir_name: mask
     io_backend:
       type: disk
 
@@ -37,7 +38,7 @@ datasets:
   val:
     name: fusion_seg_no_reg_ValSet
     type: MSRSDataset
-    dataroot: /Data/dataset/MSRSdataset/test/
+    dataroot: /home/hongyuchen/master_thesis/MSRSdataset/test/
     vi_dir_name: vi
     ir_dir_name: ir
     seg_dir_name: Segmentation_labels    
@@ -84,7 +85,7 @@ train:
     total_steps: 180000  # 保持和total_iter一致 
     pct_start: 0.2
     div_factor: 10
-    final_div_factor: 400
+    final_div_factor: 500
     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
 
   # losses

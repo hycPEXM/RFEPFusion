@@ -222,18 +222,18 @@ class MultiScaleFusion(nn.Module):
 
         self.convs = nn.ModuleList([
             nn.Sequential(
-                nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=dilation, dilation=dilation),
+                nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=dilation, dilation=dilation, bias=False),
                 nn.BatchNorm2d(mid_channels),
                 nn.GELU()
             ) for dilation in dilation_scales            
         ])
         self.conv_mixing = nn.Sequential(
-            nn.Conv2d(mid_channels * len(dilation_scales), in_channels, kernel_size=1),
+            nn.Conv2d(mid_channels * len(dilation_scales), in_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(in_channels),
             nn.GELU()
         )
         self.conv_out = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels//2, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels, in_channels//2, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(in_channels//2),
             nn.GELU(),
             nn.Conv2d(in_channels//2, out_channels, kernel_size=3, padding=1),

@@ -38,7 +38,7 @@ datasets:
     # mean: [0.485, 0.456, 0.406]
     # std: [0.229, 0.224, 0.225]
 
-    gt_size: [320, 240]  # [weight, height]
+    gt_size: [384, 288]  # [weight, height]
     use_hflip: true
     use_rot: false  # if weight != height, then use_rot must be false
 
