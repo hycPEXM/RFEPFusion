@@ -59,7 +59,7 @@ network_g:
 # path
 path:
   # pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_LLIE_vi_LOL_pretrained_hyc_small_archived_20250226_202922/best_psnr_9000_psnr_23.817_ssim_0.843.pth
-  pretrain_network_g: ~
+  pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_LLIE_vi_LOL_pretrained_hyc_small_archived_20250301_160527/best_psnr_16600_psnr_23.195_ssim_0.836.pth
   strict_load_g: true
   resume_state: ~
 
@@ -70,8 +70,8 @@ train:
     type: AdamW
     # type: Adam
     # lr: !!float 2e-4 
-    lr: !!float 4e-4 
-    weight_decay: 0.0005
+    lr: !!float 3e-4 
+    weight_decay: 0.0001
     # weight_decay: 0
     betas: [0.9, 0.99]
 
@@ -87,16 +87,17 @@ train:
   # total_epoch: 500
   warmup_iter: -1  # no warm up
   scheduler:
-    type: OneCycleLR
-    max_lr: !!float 5e-4
-    total_steps: 20000  # 保持和total_iter一致 
-    pct_start: 0.2
-    div_factor: 5
-    final_div_factor: 500
+    # type: OneCycleLR
+    # max_lr: !!float 5e-4
+    # total_steps: 60000  # 保持和total_iter一致 
+    # pct_start: 0.2
+    # div_factor: 5
+    # final_div_factor: 500
     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
-    # type: MultiStepLR
-    # milestones: [45000, 55000]
-    # gamma: 0.1
+
+    type: MultiStepLR
+    milestones: [45000, 55000]
+    gamma: 0.2
 
   # losses
   pixel_opt:

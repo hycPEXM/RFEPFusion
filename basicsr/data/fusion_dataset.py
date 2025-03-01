@@ -1,12 +1,16 @@
 from torch.utils import data as data
-from torchvision.transforms.functional import normalize
-
-from basicsr.data.data_util import paired_paths_from_folder, paired_paths_from_lmdb, paired_paths_from_meta_info_file
-from basicsr.data.transforms import augment, paired_random_crop
-from basicsr.utils import FileClient, bgr2ycbcr, imfrombytes, img2tensor, scandir
+import torchvision
+from torchvision.transforms.functional import normalize, to_tensor, resize
+import torch
+# from basicsr.data.data_util import paired_paths_from_folder, paired_paths_from_lmdb, paired_paths_from_meta_info_file
+# from basicsr.data.transforms import augment, paired_random_crop
+# from basicsr.utils import FileClient, bgr2ycbcr, imfrombytes, img2tensor, scandir
 from basicsr.utils.registry import DATASET_REGISTRY
 
-# import os
+import os
+from natsort import natsorted
+from PIL import Image
+import random
 
 @DATASET_REGISTRY.register()
 class MSRSDataset(data.Dataset):
@@ -14,76 +18,87 @@ class MSRSDataset(data.Dataset):
         super(MSRSDataset, self).__init__()
         self.opt = opt
         
-        # if self.opt['phase'] == 'train'
+        # mask is only used in training
+        self.mask_folder = None
+        self.random_crop = None
+        self.patch_w = None
+        self.patch_h = None
+        if self.opt['phase'] == 'train':            
+            self.mask_folder = os.path.join(opt['dataroot'], opt['mask_dir_name'])     
+            if isinstance(self.opt['gt_size'], list):
+                assert len(self.opt['gt_size']) == 2, "gt_size must be a list of two integers: [width, height]"
+                self.patch_w, self.patch_h = self.opt['gt_size']
+            elif isinstance(self.opt['gt_size'], int):
+                self.patch_w = self.patch_h = self.opt['gt_size']
+            self.random_crop = torchvision.transforms.RandomCrop((self.patch_h, self.patch_w))
+        self.vi_folder = os.path.join(opt['dataroot'], opt['vi_dir_name'])
+        self.ir_folder = os.path.join(opt['dataroot'], opt['ir_dir_name'])
+        self.seg_folder = os.path.join(opt['dataroot'], opt['seg_dir_name'])
 
-
-
-
-        self.file_client = None
-        self.io_backend_opt = opt['io_backend']
-        self.mean = opt['mean'] if 'mean' in opt else None
-        self.std = opt['std'] if 'std' in opt else None
-
-        self.gt_folder, self.lq_folder = opt['dataroot_gt'], opt['dataroot_lq']
-        if 'filename_tmpl' in opt:
-            self.filename_tmpl = opt['filename_tmpl']
-        else:
-            self.filename_tmpl = '{}'
-
-        if self.io_backend_opt['type'] == 'lmdb':
-            self.io_backend_opt['db_paths'] = [self.lq_folder, self.gt_folder]
-            self.io_backend_opt['client_keys'] = ['lq', 'gt']
-            self.paths = paired_paths_from_lmdb([self.lq_folder, self.gt_folder], ['lq', 'gt'])
-        elif 'meta_info_file' in self.opt and self.opt['meta_info_file'] is not None:
-            self.paths = paired_paths_from_meta_info_file([self.lq_folder, self.gt_folder], ['lq', 'gt'],
-                                                          self.opt['meta_info_file'], self.filename_tmpl)
-        else:
-            self.paths = paired_paths_from_folder([self.lq_folder, self.gt_folder], ['lq', 'gt'], self.filename_tmpl)
-
+        self.ir_list = natsorted(os.listdir(self.ir_folder))        
+        
     def __getitem__(self, index):
-        if self.file_client is None:
-            self.file_client = FileClient(self.io_backend_opt.pop('type'), **self.io_backend_opt)
-
-        scale = self.opt['scale']
-
-        # Load gt and lq images. Dimension order: HWC; channel order: BGR;
-        # image range: [0, 1], float32.
-        gt_path = self.paths[index]['gt_path']
-        img_bytes = self.file_client.get(gt_path, 'gt')
-        img_gt = imfrombytes(img_bytes, float32=True)
-        lq_path = self.paths[index]['lq_path']
-        img_bytes = self.file_client.get(lq_path, 'lq')
-        img_lq = imfrombytes(img_bytes, float32=True)
-
-        # augmentation for training
+        
+        img_name = self.ir_list[index]
+        vi_path = os.path.join(self.vi_folder, img_name)
+        ir_path = os.path.join(self.ir_folder, img_name)
+        seg_path = os.path.join(self.seg_folder, img_name)
+        vi = self.imread(vi_path, label=False, vis_flag=True)
+        ir = self.imread(ir_path, label=False, vis_flag=False)
+        seg = self.imread(seg_path, label=True, vis_flag=False)
         if self.opt['phase'] == 'train':
-            gt_size = self.opt['gt_size']  # can be a list or an int
-            # random crop
-            img_gt, img_lq = paired_random_crop(img_gt, img_lq, gt_size, scale, gt_path)
-            # flip, rotation
-            img_gt, img_lq = augment([img_gt, img_lq], self.opt['use_hflip'], self.opt['use_rot'])
-
-        # color space transform
-        if 'color' in self.opt and self.opt['color'] == 'y':
-            img_gt = bgr2ycbcr(img_gt, y_only=True)[..., None]
-            img_lq = bgr2ycbcr(img_lq, y_only=True)[..., None]
-
-        # crop the unmatched GT images during validation or testing, especially for SR benchmark datasets
-        # TODO: It is better to update the datasets, rather than force to crop
-        if self.opt['phase'] != 'train':
-            img_gt = img_gt[0:img_lq.shape[0] * scale, 0:img_lq.shape[1] * scale, :]
-
-        # BGR to RGB, HWC to CHW, numpy to tensor
-        img_gt, img_lq = img2tensor([img_gt, img_lq], bgr2rgb=True, float32=True)
-        # normalize
-        if self.mean is not None or self.std is not None:
-            normalize(img_lq, self.mean, self.std, inplace=True)
-            normalize(img_gt, self.mean, self.std, inplace=True)
-
-        return {'lq': img_lq, 'gt': img_gt, 'lq_path': lq_path, 'gt_path': gt_path}
+            mask_path = os.path.join(self.mask_folder, img_name)
+            mask = self.imread(mask_path, label=True, vis_flag=False)
+                        
+            to_augment = torch.cat([vi, ir, seg, mask], dim=0)
+            if to_augment.shape[-2] < self.patch_h or to_augment.shape[-1] < self.patch_w:
+                to_augment = resize(to_augment, (self.patch_h, self.patch_w))
+            to_augment = self.random_crop(to_augment)
+            if self.opt['use_rot'] and self.patch_h == self.patch_w and random.random() < 0.5:
+                to_augment = torch.rot90(to_augment, random.randint(0, 3), dims=(-2, -1))
+            if self.opt['use_transpose'] and random.random() < 0.5:
+                to_augment = to_augment.transpose(-2, -1)
+            if self.opt['use_flip'] and random.random() < 0.5:
+                to_augment = to_augment.flip(-2) # flip vertically
+                if random.random() < 0.5:
+                    to_augment = to_augment.flip(-1) # flip horizontally
+            
+            vi, ir, seg, mask = torch.split(to_augment, [3, 1, 1, 1], dim=0)
+            
+            seg = seg.long()
+            return {
+                'ir': ir,
+                'vi': vi,
+                'seg': seg,
+                'mask': mask
+            }
+        else:
+            seg = seg.long()
+            return {
+                'ir': ir,
+                'vi': vi,
+                'seg': seg
+            }                    
 
     def __len__(self):
-        return len(self.paths)
+        return len(self.ir_list)
     
+    @staticmethod
+    def imread(path, label=False, vis_flag=True):
+        if label:
+            img = Image.open(path)
+            # im_ts = to_tensor(img).unsqueeze(0) * 255
+            im_ts = to_tensor(img)*255
+        else:
+            if vis_flag: ## visible images; RGB channel
+                img = Image.open(path).convert('RGB')
+                # im_ts = to_tensor(img).unsqueeze(0)
+                im_ts = to_tensor(img)
+            else: ## infrared images single channel 
+                img = Image.open(path).convert('L') 
+                # im_ts = to_tensor(img).unsqueeze(0)
+                im_ts = to_tensor(img)
+        return im_ts
+
 # @DATASET_REGISTRY.register()
 # class FusionSegDataset(data.Dataset):

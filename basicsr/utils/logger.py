@@ -86,9 +86,12 @@ class MessageLogger():
         current_iter = log_vars.pop('iter')
         lrs = log_vars.pop('lrs')
 
-        message = (f'[{self.exp_name[:5]}..][epoch:{epoch:3d}, iter:{current_iter:8,d}, lr:(')
+        message = (f'[{self.exp_name[:12]}..][epoch:{epoch:3d}, iter:{current_iter:8,d}, lr:(')
+        idx = 0        
         for v in lrs:
             message += f'{v:.3e},'
+            if self.use_tb_logger and 'debug' not in self.exp_name:
+                self.tb_logger.add_scalar(f'lr{idx}', v, current_iter)
         message += ')] '
 
         # time and estimated time

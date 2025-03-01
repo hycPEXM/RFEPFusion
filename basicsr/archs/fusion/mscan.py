@@ -272,6 +272,17 @@ hyc_small_settings = {
 # hyc_small_settings = {
 #     'in_chans': 3,
 #     'embed_dims': [64, 128, 320, 512],        
+#     'mlp_ratios': [4, 4, 3, 3],
+#     'drop_rate': 0.,
+#     'drop_path_rate': 0.1,
+#     'depths': [3, 3, 5, 2],
+#     'num_stages': 4,
+#     'norm_layer': nn.BatchNorm2d
+# }
+
+# hyc_small_settings = {
+#     'in_chans': 3,
+#     'embed_dims': [64, 128, 320, 512],        
 #     'mlp_ratios': [6, 6, 4, 4],
 #     'drop_rate': 0.,
 #     'drop_path_rate': 0.1,

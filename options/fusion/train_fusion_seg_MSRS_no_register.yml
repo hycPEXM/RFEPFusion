@@ -9,7 +9,8 @@ manual_seed: 666
 # pad_size: 16  
 # pad_size: 4
 # use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
-use_amp: true
+
+# use_amp: true
 infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
 
 # dataset and data loader settings
@@ -22,12 +23,15 @@ datasets:
     ir_dir_name: ir
     seg_dir_name: Segmentation_labels
     mask_dir_name: mask
-    io_backend:
-      type: disk
+    # io_backend:
+    #   type: disk
 
-    gt_size: [480, 360]  # [weight, height]
-    use_hflip: true
-    use_rot: false  # if weight != height, then use_rot must be false
+    # gt_size: [480, 360]  # [weight, height]
+    gt_size: 360
+    use_flip: true
+    # use_rot: false  # if weight != height, then use_rot must be false
+    use_rot: true
+    use_transpose: true
 
     # data loader
     num_worker_per_gpu: 8
@@ -42,8 +46,8 @@ datasets:
     vi_dir_name: vi
     ir_dir_name: ir
     seg_dir_name: Segmentation_labels    
-    io_backend:
-      type: disk
+    # io_backend:
+    #   type: disk
 
 
 # network structures
