@@ -1,6 +1,6 @@
 # general settings
 name: RFEPFusion_fusion_seg_no_register
-model_type: RFEPFusionModel
+model_type: RFEPFusionNoRegModel
 scale: 1
 num_gpu: 5
 manual_seed: 666
@@ -10,7 +10,7 @@ manual_seed: 666
 # pad_size: 4
 # use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
 
-# use_amp: true
+use_amp: false
 infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
 
 # dataset and data loader settings
@@ -23,21 +23,24 @@ datasets:
     ir_dir_name: ir
     seg_dir_name: Segmentation_labels
     mask_dir_name: mask
+    vi_enhanced_dir_name: enhanced
     # io_backend:
     #   type: disk
 
     # gt_size: [480, 360]  # [weight, height]
     gt_size: 360
-    use_flip: true
+    resize_ratio_range: [0.75, 1.5]
+    use_flip: true # both horizontal flip and vertical flip
     # use_rot: false  # if weight != height, then use_rot must be false
     use_rot: true
     use_transpose: true
 
     # data loader
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 4
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
+    pin_memory: true
 
   val:
     name: fusion_seg_no_reg_ValSet
@@ -88,15 +91,38 @@ train:
     max_lr: !!float 5e-4
     total_steps: 180000  # 保持和total_iter一致 
     pct_start: 0.2
-    div_factor: 10
+    div_factor: 8
     final_div_factor: 500
     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
 
+  # 多任务学习动态调整权重
+  DWA: true
   # losses
   losses:
-    fusion_loss:
+    # fusion = color(use_lq_for_l_color) + intensity + texture + SSIM
+    color:
+      type: ColorLoss
+      loss_weight: 4.0
+      reduction: mean
+    intensity:
+      type: IntensityLoss
+      loss_weight: 1.0
+      reduction: mean
+    texture:
+      type: TextureLoss
+      loss_weight: 2.0
+      reduction: mean
+    SSIM:
+      type: SSIMLoss
+      choice: weighted # [unweighted, weighted, corr]
+      loss_weight: 0.5
+      reduction: mean
 
-    seg_loss:
+    # OHEM、CE、lovasz-softmax
+    seg:
+      type:      
+      loss_weight: 4.0
+      reduction: mean
   # pixel_opt:
   #   # type: CharbonnierLoss
   #   type: L1Loss
@@ -110,7 +136,7 @@ train:
 
 # validation settings
 val:
-  val_freq: !!float 1000
+  val_freq: !!float 500
   save_img: false
 
   # pbar: true
@@ -125,10 +151,36 @@ val:
     #   crop_border: 0
     #   better: lower  # the lower, the better 只要设置不是“higher”，就是越小越好
 
+    # per-dataset mean intersection over union
+    mIoUD:
+      type: calculate_mIoUD
+      # device: cpu
+      device: cuda
+
+    # per-image mIoU
+    mIoUI:
+      type: calculate_mIoUI
+      # device: cpu
+      device: cuda
+    
+    # 在进行下面metric计算时应该把图像转为灰度图，dtype为int32
+    entropy:
+      type: EN_function
+    AG:
+      type: AG_function
+    VIF:
+      type: VIF_function
+    SF:
+      type: SF_function
+  best_metric_to_save: mIoUD
+  
+  # test time augmentation
+  # TTA: false
+
 # logging settings
 logger:
-  print_freq: 200
-  save_checkpoint_freq: !!float 1000
+  print_freq: 100
+  save_checkpoint_freq: !!float 500
   save_checkpoint_max_num: 10
   use_tb_logger: true
   wandb:
@@ -139,5 +191,3 @@ logger:
 dist_params:
   backend: nccl
   port: 29500
-
-# find_unused_parameters: true

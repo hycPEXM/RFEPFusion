@@ -182,6 +182,12 @@ def parse_options(root_path, is_train=True):
         opt['path']['log'] = experiments_root
         opt['path']['visualization'] = osp.join(experiments_root, 'visualization')
 
+        # 设计理念是在保存state和network时在文件名里保留metric数据，所以一次validate对应一次保存（先validation后save）
+        if opt['val']['val_freq'] != opt['logger']['save_checkpoint_freq']:
+            opt['val']['val_freq'] = min(opt['val']['val_freq'], opt['logger']['save_checkpoint_freq'])
+            opt['logger']['save_checkpoint_freq'] = opt['val']['val_freq']
+            print("val_freq must be equal to save_checkpoint_freq, changing both to:", opt['val']['val_freq'])
+
         # change some options for debug mode
         if 'debug' in opt['name']:
             if 'val' in opt:

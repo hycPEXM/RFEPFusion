@@ -218,7 +218,15 @@ def train_pipeline(root_path):
     if opt.get('val') is not None:
         for val_loader in val_loaders:
             # model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
-            model.validation(val_loader, current_iter, tb_logger, True)  # 强制保存模型最后的可视化结果
+            # 强制保存模型最后的可视化结果
+            model.validation(val_loader, current_iter, tb_logger, True)  
+            # 用metric最好的模型，推理得到可视化结果
+            # if opt['train'].get('ema_decay', 0) > 0:
+            #     model.load_network(model.net_g_ema, model.best_net_g_ema_path, True, 'params_ema')
+            #     model.validation(val_loader, current_iter, tb_logger, True)
+            # else:
+            #     model.load_network(model.net_g, model.best_net_g_path, True, 'params')
+            #     model.validation(val_loader, current_iter, tb_logger, True)
     if tb_logger:
         tb_logger.close()
 

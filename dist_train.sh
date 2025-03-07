@@ -8,10 +8,15 @@
 # stage 1.2: train_LLIE_vi_LOL_pretrained
 # CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_vi_LOL_pretrained.yml --launcher pytorch 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_vi_LOL_pretrained.yml --launcher pytorch
-CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_vi_LOL_pretrained_hyc_small.yml --launcher pytorch
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_vi_LOL_pretrained_hyc_small.yml --launcher pytorch
 
 # stage 1.3 train_LLIE_ir
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_ir.yml --launcher pytorch
+
+# stage 1.4 train_LLIE_vi
+# 训练老是中断，只能这样暂时应付一下了
+# /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_LLIE_vi/best_niqe_10000_niqe_4.915.pth
+CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_vi.yml --launcher pytorch --auto_resume
 
 
 ##############################

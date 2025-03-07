@@ -119,14 +119,20 @@ def paired_paths_from_folder_LLIE(dataroot, dataset_list, folders, keys, filenam
         gt_folder = os.path.join(dataroot, dataset['dataset_name'], enhanced_folder)
         lq_paths = list(scandir(lq_folder))
         gt_paths = list(scandir(gt_folder))
+        lq_paths.sort()
+        gt_paths.sort()
         assert len(lq_paths) == len(gt_paths), (f'{lq_key} and {gt_key} datasets have different number of images: '
                                                f'{len(lq_paths)}, {len(gt_paths)}.')        
-        for gt_path in gt_paths:
-            basename, ext = os.path.splitext(os.path.basename(gt_path))
-            lq_name = f'{filename_tmpl.format(basename)}{ext}'
-            lq_path = os.path.join(lq_folder, lq_name)
-            assert lq_name in lq_paths, f'{lq_name} is not in {lq_key}_paths.'
-            gt_path = os.path.join(gt_folder, gt_path)
+        for i in range(len(gt_paths)):
+            # basename, ext =                        
+            # lq_name = f'{filename_tmpl.format(basename)}{ext}'
+            # lq_path = os.path.join(lq_folder, lq_name)
+            # assert lq_name in lq_paths, f'{lq_name} is not in {lq_key}_paths.'              
+            gt_path = os.path.join(gt_folder, gt_paths[i])
+            lq_path = os.path.join(lq_folder, lq_paths[i])
+            basename_gt, _ = os.path.splitext(os.path.basename(gt_path)) 
+            basename_lq, _ = os.path.splitext(os.path.basename(lq_path)) 
+            assert basename_gt == basename_lq, "lq and gt are not corresponding"
             paths.extend([dict([(f'{lq_key}_path', lq_path), (f'{gt_key}_path', gt_path)])] * int(dataset['mult_ratio']))
     return paths
 

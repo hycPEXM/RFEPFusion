@@ -1,0 +1,48 @@
+name: RFEPFusion_LLIE_vi_LOL_pretrained_hyc_small
+model_type: LLIEModel_VI
+scale: 1
+num_gpu: 0
+manual_seed: 888
+infer_slide_max_size: 640
+
+# dataset and data loader settings
+datasets:  
+  # train: ~
+  # val: ~
+  test_1:  # 第一个测试集
+    name: LLIE_vi_LOL_TestSet
+    type: PairedImageDataset
+    dataroot_lq: /home/hongyuchen/master_thesis/LOLdataset/test/low
+    dataroot_gt: /home/hongyuchen/master_thesis/LOLdataset/test/high    
+    io_backend:
+      type: disk
+
+
+# network structures
+network_g:
+  type: LLIE_VI
+  backbone_settings: hyc_small
+
+# path
+path:
+  pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_LLIE_vi_LOL_pretrained_hyc_small/best_psnr_28600_psnr_24.360_ssim_0.852.pth
+  strict_load_g: true
+
+
+# validation settings
+val:
+  save_img: true
+  suffix: ~
+  # pbar: true
+  GT_mean: True
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+      # better: higher
+    ssim:
+      type: calculate_ssim
+      crop_border: 0
+      test_y_channel: false

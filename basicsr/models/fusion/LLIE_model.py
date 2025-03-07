@@ -59,7 +59,7 @@ class LLIEModel_VI(BaseModel):
         # define network
         self.net_g = build_network(opt['network_g'])
         self.net_g = self.model_to_device(self.net_g)
-        self.print_network(self.net_g)
+        # self.print_network(self.net_g)
 
         # load pretrained models
         load_path = self.opt['path'].get('pretrain_network_g', None)
@@ -77,21 +77,20 @@ class LLIEModel_VI(BaseModel):
         if self.use_amp:
             print('Using Automatic Mixed Precision')
         else:
-            print('Not using Automatic Mixed Precision')
+            print('Not using Automatic Mixed Precision')                
         
         self.mixing_flag = False
-        mixing_augs = self.opt['train'].get('mixing_augs', None)
-        if mixing_augs is not None:
-            self.mixing_flag = self.opt['train']['mixing_augs'].get('mixup', False)
-            if self.mixing_flag:
-                mixup_beta = self.opt['train']['mixing_augs'].get(
-                    'mixup_beta', 1.2)
-                use_identity = self.opt['train']['mixing_augs'].get(
-                    'use_identity', False)
-                self.mixing_augmentation = Mixing_Augment(
-                    mixup_beta, use_identity, self.device)
-
-        if self.is_train:
+        if self.is_train:            
+            mixing_augs = self.opt['train'].get('mixing_augs', None)
+            if mixing_augs is not None:
+                self.mixing_flag = self.opt['train']['mixing_augs'].get('mixup', False)
+                if self.mixing_flag:
+                    mixup_beta = self.opt['train']['mixing_augs'].get(
+                        'mixup_beta', 1.2)
+                    use_identity = self.opt['train']['mixing_augs'].get(
+                        'use_identity', False)
+                    self.mixing_augmentation = Mixing_Augment(
+                        mixup_beta, use_identity, self.device)
             self.init_training_settings()
 
     def init_training_settings(self):
@@ -171,6 +170,7 @@ class LLIEModel_VI(BaseModel):
             self.output = self.net_g(self.lq)            
             for loss_name, loss_cls in self.loss_cls_dict.items():
                 #!!! 注意，在训练红外可见光融合的LLIE时，color_loss的self.gt应该换成self.lq！！！
+                # 后来我感觉没必要加上这个color loss了
                 if loss_name == 'l_color' and self.opt.get('use_lq_for_l_color', False):
                     loss = loss_cls(self.output, self.lq) 
                 else:
@@ -229,33 +229,69 @@ class LLIEModel_VI(BaseModel):
             self.net_g.train()
     # adapted from SegNeXt-main\mmseg\models\segmentors\encoder_decoder.py
     def test_slide(self):
-        self.net_g.eval()
-        w_stride, h_stride = self.opt['datasets']['train']['gt_size']
-        h_crop = h_stride  # crop可以大于stride，patch之间会有一定重叠，可能会带来更好的效果，但是会增加推理时间
-        w_crop = w_stride
-        bs, out_channels, h_img, w_img = self.lq.shape
-        # out_channels = 3        
-        h_grids = max(h_img - h_crop + h_stride - 1, 0) // h_stride + 1
-        w_grids = max(w_img - w_crop + w_stride - 1, 0) // w_stride + 1
-        preds = torch.zeros(bs, out_channels, h_img, w_img)
-        count_mat = torch.zeros(bs, 1, h_img, w_img)
-        for h_idx in range(h_grids):
-            for w_idx in range(w_grids):
-                y1 = h_idx * h_stride
-                x1 = w_idx * w_stride
-                y2 = min(y1 + h_crop, h_img)
-                x2 = min(x1 + w_crop, w_img)
-                y1 = max(y2 - h_crop, 0)
-                x1 = max(x2 - w_crop, 0)
-                lq_patch = self.lq[:, :, y1:y2, x1:x2]
-                with torch.no_grad():
-                    pred = self.net_g(lq_patch)
-                preds[:, :, y1:y2, x1:x2] += pred.to('cpu') # RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
-                count_mat[:, :, y1:y2, x1:x2] += 1
-        assert (count_mat == 0).sum() == 0, "might encounter zero dividing error"
-        preds = preds / count_mat
-        self.output = preds.to(self.device)
-        self.net_g.train()
+        # If h_crop > h_img or w_crop > w_img, the small patch will be used to decode without padding.
+        if hasattr(self, 'net_g_ema'):
+            self.net_g_ema.eval()
+            if self.opt['datasets'].get('train', None) is not None:
+                w_stride, h_stride = self.opt['datasets']['train']['gt_size']
+            else:
+                w_stride = h_stride = self.opt.get('infer_slide_max_size', 640)
+            h_crop = h_stride  # crop可以大于stride，patch之间会有一定重叠，可能会带来更好的效果，但是会增加推理时间
+            w_crop = w_stride
+            bs, out_channels, h_img, w_img = self.lq.shape
+            # out_channels = 3        
+            h_grids = max(h_img - h_crop + h_stride - 1, 0) // h_stride + 1
+            w_grids = max(w_img - w_crop + w_stride - 1, 0) // w_stride + 1
+            preds = torch.zeros(bs, out_channels, h_img, w_img)
+            count_mat = torch.zeros(bs, 1, h_img, w_img)
+            for h_idx in range(h_grids):
+                for w_idx in range(w_grids):
+                    y1 = h_idx * h_stride
+                    x1 = w_idx * w_stride
+                    y2 = min(y1 + h_crop, h_img)
+                    x2 = min(x1 + w_crop, w_img)
+                    y1 = max(y2 - h_crop, 0)
+                    x1 = max(x2 - w_crop, 0)
+                    lq_patch = self.lq[:, :, y1:y2, x1:x2]
+                    with torch.no_grad():
+                        pred = self.net_g_ema(lq_patch)
+                    preds[:, :, y1:y2, x1:x2] += pred.to('cpu') # RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
+                    count_mat[:, :, y1:y2, x1:x2] += 1
+            assert (count_mat == 0).sum() == 0, "might encounter zero dividing error"
+            preds = preds / count_mat
+            self.output = preds.to(self.device)
+            self.net_g_ema.train()            
+        else:
+            self.net_g.eval()
+            if self.opt['datasets'].get('train', None) is not None:
+                w_stride, h_stride = self.opt['datasets']['train']['gt_size']
+            else:
+                w_stride = h_stride = self.opt.get('infer_slide_max_size', 640)
+            h_crop = h_stride  # crop可以大于stride，patch之间会有一定重叠，可能会带来更好的效果，但是会增加推理时间
+            w_crop = w_stride
+            bs, out_channels, h_img, w_img = self.lq.shape
+            # out_channels = 3        
+            h_grids = max(h_img - h_crop + h_stride - 1, 0) // h_stride + 1
+            w_grids = max(w_img - w_crop + w_stride - 1, 0) // w_stride + 1
+            preds = torch.zeros(bs, out_channels, h_img, w_img)
+            count_mat = torch.zeros(bs, 1, h_img, w_img)
+            for h_idx in range(h_grids):
+                for w_idx in range(w_grids):
+                    y1 = h_idx * h_stride
+                    x1 = w_idx * w_stride
+                    y2 = min(y1 + h_crop, h_img)
+                    x2 = min(x1 + w_crop, w_img)
+                    y1 = max(y2 - h_crop, 0)
+                    x1 = max(x2 - w_crop, 0)
+                    lq_patch = self.lq[:, :, y1:y2, x1:x2]
+                    with torch.no_grad():
+                        pred = self.net_g(lq_patch)
+                    preds[:, :, y1:y2, x1:x2] += pred.to('cpu') # RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
+                    count_mat[:, :, y1:y2, x1:x2] += 1
+            assert (count_mat == 0).sum() == 0, "might encounter zero dividing error"
+            preds = preds / count_mat
+            self.output = preds.to(self.device)
+            self.net_g.train()
 
     def test_selfensemble(self):
         # TODO: to be tested
@@ -323,29 +359,46 @@ class LLIEModel_VI(BaseModel):
         if with_metrics:
             self.metric_results = {metric: 0 for metric in self.metric_results}
 
+        if self.opt['val'].get('GT_mean', False):
+            import cv2
+            import numpy as np
+        
+        use_RGB = True
+        if self.opt['datasets'].get('val', None):
+            use_RGB = self.opt['datasets']['val'].get('use_RGB', True)
+
         metric_data = dict()
         if use_pbar:
             pbar = tqdm(total=len(dataloader), unit='image')
         torch.cuda.empty_cache()
         for idx, val_data in enumerate(dataloader):
+            # DataLoader 在批处理时会将这些字符串组织成一个列表，所以val_data['lq_path'][0]
+            # 需要加上索引[0]
             img_name = osp.splitext(osp.basename(val_data['lq_path'][0]))[0]
+            # print(val_data['lq_path'])
             self.feed_data(val_data)
             
-            max_img_size = max(self.gt.shape[2:])
+            max_img_size = max(self.lq.shape[2:])
             if max_img_size <= self.opt.get('infer_slide_max_size', 640):
                 self.test()
             else:
                 self.test_slide()
 
-            # print(self.gt.shape, self.lq.shape, self.output.shape)
+            # print(self.gt.shape, self.lq.shape, self.output.shape)            
 
             visuals = self.get_current_visuals()
-            sr_img = tensor2img([visuals['result']], rgb2bgr=self.opt['datasets']['val'].get('use_RGB', True))
-            metric_data['img'] = sr_img
-            if 'gt' in visuals:
-                gt_img = tensor2img([visuals['gt']], rgb2bgr=self.opt['datasets']['val'].get('use_RGB', True))
+            sr_img = tensor2img([visuals['result']], rgb2bgr=use_RGB)
+            
+            if 'gt' in visuals:                
+                gt_img = tensor2img([visuals['gt']], rgb2bgr=use_RGB)
+                if self.opt['val'].get('GT_mean', False):
+                    mean_result = cv2.cvtColor(sr_img.astype(np.float32), cv2.COLOR_BGR2GRAY).mean().astype(np.float64)
+                    mean_gt = cv2.cvtColor(gt_img.astype(np.float32), cv2.COLOR_BGR2GRAY).mean().astype(np.float64)
+                    sr_img = np.clip(sr_img*mean_gt/mean_result, 0, 255)
+                    sr_img = sr_img.astype(gt_img.dtype)
                 metric_data['img2'] = gt_img
                 del self.gt
+            metric_data['img'] = sr_img
 
             # tentative for out of GPU memory
             del self.lq
@@ -360,7 +413,7 @@ class LLIEModel_VI(BaseModel):
                     save_img_path = osp.join(self.opt['path']['visualization'], 
                                              f'{img_name}.png')
                 else:
-                    if self.opt['val']['suffix']:
+                    if self.opt['val'].setdefault('suffix', None):
                         save_img_path = osp.join(self.opt['path']['visualization'], dataset_name,
                                                  f'{img_name}_{self.opt["val"]["suffix"]}.png')
                     else:
@@ -386,11 +439,11 @@ class LLIEModel_VI(BaseModel):
                 best_updated_flag |= self._update_best_metric_result(dataset_name, metric, self.metric_results[metric], current_iter, save_best_metric = save_best_metric)
 
             self._log_validation_metric_values(current_iter, dataset_name, tb_logger)
-            if best_updated_flag:
+            if best_updated_flag and self.is_train:
                 self.save_best(current_iter, save_best_metric = save_best_metric)
 
     def _log_validation_metric_values(self, current_iter, dataset_name, tb_logger):
-        log_str = f'Validation {dataset_name}\n'
+        log_str = f'Validation {dataset_name} @ {current_iter} iter\n'
         for metric, value in self.metric_results.items():
             log_str += f'\t # {metric}: {value:.4f}'
             if hasattr(self, 'best_metric_results'):
@@ -425,6 +478,8 @@ class LLIEModel_VI(BaseModel):
             self.save_network([self.net_g, self.net_g_ema], 'net_g', current_iter, param_key=['params', 'params_ema'])
         else:
             self.save_network(self.net_g, 'net_g', current_iter)
+        # 这里有个缺陷，没有在state里保存best metric，于是resume时best metric又被重新初始化了，只能通过看几个.log文件对比，找出最好的metric
+        # 应该在state里保存best metric，然后resume时加载，并且还要修改一下_initialize_best_metric_results的逻辑
         self.save_training_state(epoch, current_iter)
 
 
