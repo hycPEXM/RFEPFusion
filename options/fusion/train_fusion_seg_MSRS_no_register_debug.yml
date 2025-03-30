@@ -1,0 +1,670 @@
+# # general settings
+# name: RFEPFusion_fusion_seg_no_register
+# model_type: RFEPFusionNoRegModel
+# scale: 1
+# # num_gpu: 5
+# num_gpu: 1
+# manual_seed: 666
+# # the size of the input image must be a multiple of 16
+# # Padding in case images are not multiples of 16
+# # pad_size: 16  
+# # pad_size: 4
+# # use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
+# seg_num_class: 9
+
+# use_amp: false
+# infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
+# # Inference by sliding-window with overlap.
+# overlap_slide_inference: 128  # 高宽都用一样的
+
+# # dataset and data loader settings
+# datasets:
+#   train:
+#     name: fusion_seg_no_reg_TrainSet
+#     type: MSRSDataset
+#     dataroot: /home/hongyuchen/master_thesis/MSRSdataset/train/
+#     vi_dir_name: vi
+#     ir_dir_name: ir
+#     seg_dir_name: Segmentation_labels_relabel
+#     mask_dir_name: mask_person_relabel
+#     vi_enhanced_dir_name: enhanced
+#     # io_backend:
+#     #   type: disk
+
+#     # gt_size: [480, 360]  # [weight, height]
+#     gt_size: 320
+#     # gt_size: 360
+#     resize_ratio_range: [0.7, 1.8]
+#     use_flip: true # both horizontal flip and vertical flip
+#     # use_rot: false  # if weight != height, then use_rot must be false
+#     use_rot: true
+#     use_transpose: true
+
+#     # data loader
+#     num_worker_per_gpu: 5
+#     batch_size_per_gpu: 5
+#     # dataset_enlarge_ratio: 200
+#     prefetch_mode: ~
+#     pin_memory: true
+
+#   val:
+#     name: fusion_seg_no_reg_ValSet
+#     type: MSRSDataset
+#     dataroot: /home/hongyuchen/master_thesis/MSRSdataset/test/
+#     vi_dir_name: vi
+#     ir_dir_name: ir
+#     seg_dir_name: Segmentation_labels_relabel    
+#     # io_backend:
+#     #   type: disk
+
+
+# # network structures
+# network_g:
+#   type: RFEPFusion_no_register
+#   vi_settings: hyc_small
+#   ir_settings: tiny
+#   stem_scale: 2
+
+# # path
+# path:
+#   pretrain_network_g: ~
+#   strict_load_g: true
+#   resume_state: ~
+
+# # training settings
+# train:
+#   # ema_decay: 0.999
+#   optim_g:
+#     type: AdamW
+#     # type: Adam
+#     lr: !!float 2e-4  # 初始学习率，实际上不会被用到
+#     weight_decay: 0.0001
+#     # weight_decay: 0
+#     betas: [0.9, 0.99]
+
+#   use_grad_clip: true
+#   max_grad_norm: 0.0000001
+#   # max_grad_norm: 0.01
+    
+#   # mixing_augs:
+#   #   mixup: true
+#   #   mixup_beta: 1.2
+#   #   use_identity: true
+
+#   # iter-based training
+#   # total_iter: 180000  
+#   total_iter: 2000
+#   # total_epoch: 500
+#   warmup_iter: -1  # no warm up
+#   scheduler:
+#     type: OneCycleLR
+#     max_lr: !!float 1e-5
+#     total_steps: 180000  # 保持和total_iter一致 
+#     pct_start: 0.2
+#     div_factor: 8
+#     final_div_factor: 500
+#     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
+
+#   # 多任务学习动态调整权重
+#   MTL_auto_weighting: DWA  # [DWA, UW, GradNorm, MGDA, FairGrad]  Auto-Lambda需要一个inner、outer batch的bilevel训练方式，还得重新改optimize部分代码，太麻烦了
+#   # DWA: true
+
+#   # losses
+#   losses:
+#     # fusion = color(use_lq_for_l_color) + intensity + texture + SSIM
+#     color:
+#       type: ColorLoss
+#       loss_weight: 2.5
+#       reduction: mean
+#     intensity:
+#       type: IntensityLoss
+#       loss_weight: 1.0
+#       reduction: mean
+#       lambda_: 2.0
+#     # 计算时记得传入device参数
+#     texture:
+#       type: TextureLoss
+#       loss_weight: 1.8
+#       reduction: mean
+#       device: cuda
+#     SSIM:
+#       type: SSIMLoss
+#       choice: weighted # [unweighted, weighted, corr]
+#       loss_weight: 0.5
+#       reduction: mean
+
+#     seg:
+#       type: SegLoss
+#       choice: OHEM # [CE, focal, lovasz, OHEM, jaccard] # 也可以用混合： hybrid = focal + 0.5 * jaccard；
+#       # 对于jaccard、lovasz来说，也可以尝试per_image=True，计算的是mIoUI
+#       # class_weight: None # If given, has to be a Tensor of size C
+#       # 统计出每一类别出现的样本数，记为num_samples_c,
+#       # 每一类的class_weight取为：
+#       # (sum(num_samples_c)/num_samples_c[i])/sum(sum(num_samples_c)/num_samples_c[i])，
+#       # 以缓解类别不均衡问题
+#       num_class: 9
+#       loss_weight: 1.0
+#       reduction: mean
+#       # type: HybridSegLoss
+#       # choices: [focal, jaccard]
+#       # loss_weights: [1.0, 0.5]
+  
+
+# # validation settings
+# val:
+#   # val_freq: !!float 500
+#   val_freq: !!float 2000
+#   save_img: false
+
+#   # pbar: true
+
+#   metrics:
+#     # psnr: # metric name, can be arbitrary
+#     #   type: calculate_psnr
+#     #   crop_border: 0
+#     #   test_y_channel: false
+#     # niqe:
+#     #   type: calculate_niqe
+#     #   crop_border: 0
+#     #   better: lower  # the lower, the better 只要设置不是“higher”，就是越小越好
+
+#     # per-dataset mean intersection over union
+#     mIoUD:
+#       type: calculate_mIoUD
+#       # device: cpu
+#       device: cuda
+
+#     # per-image mIoU
+#     mIoUI:
+#       type: calculate_mIoUI
+#       # device: cpu
+#       device: cuda
+    
+#     # 在进行下面metric计算时应该把图像转为灰度图，dtype为int32
+#     entropy:
+#       type: EN_function
+#     AG:
+#       type: AG_function
+#     # VIF计算太耗时了
+#     # VIF:
+#     #   type: VIF_function
+#     # SF:
+#     #   type: SF_function
+#     # SCD:
+#     #   type: SCD_function
+#     # MI:
+#     #   type: MI_function
+#   best_metric_to_save: mIoUD
+  
+#   # test time augmentation
+#   # TTA: false
+#   TTA_pipeline:
+#     flip_aug: true
+#     rot90_aug: false
+#     flip_direction: [horizontal] # [horizontal, vertical]
+#     # img_ratios: [0.75, 1.0, 1.25, 1.5, 1.75]
+#     img_ratios: [1.25]
+
+# # logging settings
+# logger:
+#   # print_freq: 100
+#   print_freq: 1
+#   # save_checkpoint_freq: !!float 500
+#   save_checkpoint_freq: !!float 2000
+#   save_checkpoint_max_num: 10
+#   use_tb_logger: true
+#   wandb:
+#     project: ~
+#     resume_id: ~
+
+# # dist training settings
+# dist_params:
+#   backend: nccl
+#   port: 29500
+
+
+# general settings
+# name: RFEPFusion_fusion_seg_no_register
+# model_type: RFEPFusionNoRegModel
+# scale: 1
+# # num_gpu: 5
+# num_gpu: 1
+# manual_seed: 666
+# # the size of the input image must be a multiple of 16
+# # Padding in case images are not multiples of 16
+# # pad_size: 16  
+# # pad_size: 4
+# # use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
+# seg_num_class: 9
+# val_start_iter: 20000
+
+# use_amp: false
+# infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
+# # Inference by sliding-window with overlap.
+# overlap_slide_inference: 128  # 高宽都用一样的
+
+# # dataset and data loader settings
+# datasets:
+#   train:
+#     name: fusion_seg_no_reg_TrainSet
+#     type: MSRSDataset
+#     dataroot: /home/hongyuchen/master_thesis/MSRSdataset/train/
+#     vi_dir_name: vi
+#     ir_dir_name: ir
+#     seg_dir_name: Segmentation_labels_relabel
+#     mask_dir_name: mask_person_relabel
+#     vi_enhanced_dir_name: enhanced
+#     # io_backend:
+#     #   type: disk
+
+#     # gt_size: [480, 360]  # [weight, height]
+#     gt_size: 320
+#     # gt_size: 360
+#     resize_ratio_range: [0.7, 1.8]
+#     use_flip: true # both horizontal flip and vertical flip
+#     # use_rot: false  # if weight != height, then use_rot must be false
+#     use_rot: true
+#     use_transpose: true
+
+#     # data loader
+#     num_worker_per_gpu: 5
+#     batch_size_per_gpu: 5
+#     # dataset_enlarge_ratio: 200
+#     prefetch_mode: ~
+#     pin_memory: true
+
+#   val:
+#     name: fusion_seg_no_reg_ValSet
+#     type: MSRSDataset
+#     dataroot: /home/hongyuchen/master_thesis/MSRSdataset/test/
+#     vi_dir_name: vi
+#     ir_dir_name: ir
+#     seg_dir_name: Segmentation_labels_relabel    
+#     # io_backend:
+#     #   type: disk
+
+
+# # network structures
+# network_g:
+#   type: RFEPFusion_no_register
+#   vi_settings: hyc_small
+#   ir_settings: tiny
+#   stem_scale: 2
+
+# # path
+# path:
+#   pretrain_network_g: ~
+#   strict_load_g: true
+#   resume_state: ~
+
+# # training settings
+# train:
+#   # ema_decay: 0.999
+#   optim_g:
+#     type: AdamW
+#     lr: !!float 2e-6  # 初始学习率，实际上不会被用到
+#     weight_decay: 0.0001
+#     betas: [0.9, 0.99]
+
+#   use_grad_clip: true
+#   # max_grad_norm: 0.001
+#   max_grad_norm: 0.1
+
+#   # mixing_augs:
+#   #   mixup: true
+#   #   mixup_beta: 1.2
+#   #   use_identity: true
+
+#   # iter-based training
+#   total_iter: 120000  
+#   # total_iter: 2 
+#   # total_epoch: 500
+#   warmup_iter: -1  # no warm up
+#   scheduler:
+#     type: OneCycleLR
+#     max_lr: !!float 1e-3
+#     total_steps: 120000  # 保持和total_iter一致 
+#     pct_start: 0.2
+#     div_factor: 10
+#     final_div_factor: 500
+#     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
+
+#   # 多任务学习动态调整权重
+#   MTL_auto_weighting: DWA  # [DWA, UW, GradNorm, MGDA, FairGrad]  Auto-Lambda需要一个inner、outer batch的bilevel训练方式，还得重新改optimize部分代码，太麻烦了
+#   # DWA: true
+
+#   # losses
+#   losses:
+#     # fusion = color(use_lq_for_l_color) + intensity + texture + SSIM
+#     color:
+#       type: ColorLoss
+#       loss_weight: 1.0
+#       reduction: mean
+#     intensity:
+#       type: IntensityLoss
+#       loss_weight: 1.2
+#       reduction: mean
+#       lambda_: 2.0
+#     # 计算时记得传入device参数
+#     texture:
+#       type: TextureLoss
+#       loss_weight: 2.0
+#       reduction: mean
+#       device: cuda
+#     SSIM:
+#       type: SSIMLoss
+#       choice: weighted # [unweighted, weighted, corr]
+#       loss_weight: 0.5
+#       reduction: mean
+
+#     seg:
+#       type: SegLoss
+#       choice: OHEM # [CE, focal, lovasz, OHEM, jaccard] # 也可以用混合： hybrid = focal + 0.5 * jaccard；
+#       # 对于jaccard、lovasz来说，也可以尝试per_image=True，计算的是mIoUI
+#       # class_weight: None # If given, has to be a Tensor of size C
+#       # 统计出每一类别出现的样本数，记为num_samples_c,
+#       # 每一类的class_weight取为：
+#       # (sum(num_samples_c)/num_samples_c[i])/sum(sum(num_samples_c)/num_samples_c[i])，
+#       # 以缓解类别不均衡问题
+#       num_class: 9
+#       loss_weight: 1.5
+#       reduction: mean
+#       # type: HybridSegLoss
+#       # choices: [focal, jaccard]
+#       # loss_weights: [1.0, 0.5]
+  
+
+# # validation settings
+# val:
+#   val_freq: !!float 50
+#   # val_freq: !!float 2
+#   save_img: false
+
+#   # pbar: true
+
+#   # metrics:
+#   #   # psnr: # metric name, can be arbitrary
+#   #   #   type: calculate_psnr
+#   #   #   crop_border: 0
+#   #   #   test_y_channel: false
+#   #   # niqe:
+#   #   #   type: calculate_niqe
+#   #   #   crop_border: 0
+#   #   #   better: lower  # the lower, the better 只要设置不是“higher”，就是越小越好
+
+#   #   # per-dataset mean intersection over union
+#   #   mIoUD:
+#   #     type: calculate_mIoUD
+#   #     # device: cpu
+#   #     device: cuda
+
+#   #   # per-image mIoU
+#   #   mIoUI:
+#   #     type: calculate_mIoUI
+#   #     # device: cpu
+#   #     device: cuda
+    
+#   #   # 在进行下面metric计算时应该把图像转为灰度图，dtype为int32
+#   #   entropy:
+#   #     type: EN_function
+#   #   AG:
+#   #     type: AG_function
+#   #   # VIF计算太耗时了
+#   #   # VIF:
+#   #   #   type: VIF_function
+#   #   SF:
+#   #     type: SF_function
+#   #   SCD:
+#   #     type: SCD_function
+#   #   # MI略耗时
+#   #   # MI:
+#   #   #   type: MI_function
+#   # best_metric_to_save: mIoUD
+  
+#   # test time augmentation
+#   # TTA: false
+#   TTA_pipeline:
+#     flip_aug: true
+#     rot90_aug: false  # 因为图片高宽大概率是不一样的
+#     flip_direction: [horizontal] # [horizontal, vertical]
+#     img_ratios: [0.75, 1.0, 1.25, 1.5, 1.75]
+
+# # logging settings
+# logger:
+#   print_freq: 25
+#   # print_freq: 1
+#   save_checkpoint_freq: !!float 50
+#   # save_checkpoint_freq: !!float 2
+#   save_checkpoint_max_num: 10
+#   use_tb_logger: true
+#   wandb:
+#     project: ~
+#     resume_id: ~
+
+# # dist training settings
+# dist_params:
+#   backend: nccl
+#   port: 29500
+  
+# general settings
+name: RFEPFusion_fusion_seg_no_register
+model_type: RFEPFusionNoRegModel
+scale: 1
+# num_gpu: 5
+num_gpu: 1
+manual_seed: 666
+# the size of the input image must be a multiple of 16
+# Padding in case images are not multiples of 16
+# pad_size: 16  
+# pad_size: 4
+# use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
+seg_num_class: 9
+val_start_iter: 20000
+
+use_amp: false
+infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
+# Inference by sliding-window with overlap.
+overlap_slide_inference: 128  # 高宽都用一样的
+
+# dataset and data loader settings
+datasets:
+  train:
+    name: fusion_seg_no_reg_TrainSet
+    type: MSRSDataset
+    dataroot: /home/hongyuchen/master_thesis/MSRSdataset/train/
+    vi_dir_name: vi
+    ir_dir_name: ir
+    seg_dir_name: Segmentation_labels_relabel
+    mask_dir_name: mask_person_relabel
+    vi_enhanced_dir_name: enhanced
+    # io_backend:
+    #   type: disk
+
+    # gt_size: [480, 360]  # [weight, height]
+    gt_size: [640, 480]
+    # gt_size: 360
+    resize_ratio_range: [0.7, 1.8]
+    use_flip: true # both horizontal flip and vertical flip
+    # use_rot: false  # if weight != height, then use_rot must be false
+    # use_rot: true
+    # use_transpose: true
+
+    # data loader
+    num_worker_per_gpu: 1
+    batch_size_per_gpu: 1
+    # dataset_enlarge_ratio: 200
+    prefetch_mode: ~
+    pin_memory: true
+
+  val:
+    name: fusion_seg_no_reg_ValSet
+    type: MSRSDataset
+    dataroot: /home/hongyuchen/master_thesis/MSRSdataset/test/
+    vi_dir_name: vi
+    ir_dir_name: ir
+    seg_dir_name: Segmentation_labels_relabel    
+    # io_backend:
+    #   type: disk
+
+
+# network structures
+network_g:
+  type: RFEPFusion_no_register
+  vi_settings: hyc_small
+  ir_settings: tiny
+  stem_scale: 2
+
+# path
+path:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: ~
+
+# training settings
+train:
+  # ema_decay: 0.999
+  optim_g:
+    type: AdamW
+    lr: !!float 2e-6  # 初始学习率，实际上不会被用到
+    weight_decay: 0.0001
+    betas: [0.9, 0.99]
+
+  use_grad_clip: true
+  # max_grad_norm: 0.001
+  max_grad_norm: 0.1
+
+  # mixing_augs:
+  #   mixup: true
+  #   mixup_beta: 1.2
+  #   use_identity: true
+
+  # iter-based training
+  total_iter: 120000  
+  # total_iter: 2 
+  # total_epoch: 500
+  warmup_iter: -1  # no warm up
+  scheduler:
+    type: OneCycleLR
+    max_lr: !!float 1e-3
+    total_steps: 120000  # 保持和total_iter一致 
+    pct_start: 0.2
+    div_factor: 10
+    final_div_factor: 500
+    # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
+
+  # 多任务学习动态调整权重
+  MTL_auto_weighting: DWA  # [DWA, UW, GradNorm, MGDA, FairGrad]  Auto-Lambda需要一个inner、outer batch的bilevel训练方式，还得重新改optimize部分代码，太麻烦了
+  # DWA: true
+
+  # losses
+  losses:
+    # fusion = color(use_lq_for_l_color) + intensity + texture + SSIM
+    color:
+      type: ColorLoss
+      loss_weight: 1.0
+      reduction: mean
+    intensity:
+      type: IntensityLoss
+      loss_weight: 1.2
+      reduction: mean
+      lambda_: 2.0
+    # 计算时记得传入device参数
+    texture:
+      type: TextureLoss
+      loss_weight: 2.0
+      reduction: mean
+      device: cuda
+    SSIM:
+      type: SSIMLoss
+      choice: weighted # [unweighted, weighted, corr]
+      loss_weight: 0.5
+      reduction: mean
+
+    seg:
+      type: SegLoss
+      choice: OHEM # [CE, focal, lovasz, OHEM, jaccard] # 也可以用混合： hybrid = focal + 0.5 * jaccard；
+      # 对于jaccard、lovasz来说，也可以尝试per_image=True，计算的是mIoUI
+      # class_weight: None # If given, has to be a Tensor of size C
+      # 统计出每一类别出现的样本数，记为num_samples_c,
+      # 每一类的class_weight取为：
+      # (sum(num_samples_c)/num_samples_c[i])/sum(sum(num_samples_c)/num_samples_c[i])，
+      # 以缓解类别不均衡问题
+      num_class: 9
+      loss_weight: 1.5
+      reduction: mean
+      # type: HybridSegLoss
+      # choices: [focal, jaccard]
+      # loss_weights: [1.0, 0.5]
+  
+
+# validation settings
+val:
+  val_freq: !!float 50
+  # val_freq: !!float 2
+  save_img: false
+
+  # pbar: true
+
+  # metrics:
+  #   # psnr: # metric name, can be arbitrary
+  #   #   type: calculate_psnr
+  #   #   crop_border: 0
+  #   #   test_y_channel: false
+  #   # niqe:
+  #   #   type: calculate_niqe
+  #   #   crop_border: 0
+  #   #   better: lower  # the lower, the better 只要设置不是“higher”，就是越小越好
+
+  #   # per-dataset mean intersection over union
+  #   mIoUD:
+  #     type: calculate_mIoUD
+  #     # device: cpu
+  #     device: cuda
+
+  #   # per-image mIoU
+  #   mIoUI:
+  #     type: calculate_mIoUI
+  #     # device: cpu
+  #     device: cuda
+    
+  #   # 在进行下面metric计算时应该把图像转为灰度图，dtype为int32
+  #   entropy:
+  #     type: EN_function
+  #   AG:
+  #     type: AG_function
+  #   # VIF计算太耗时了
+  #   # VIF:
+  #   #   type: VIF_function
+  #   SF:
+  #     type: SF_function
+  #   SCD:
+  #     type: SCD_function
+  #   # MI略耗时
+  #   # MI:
+  #   #   type: MI_function
+  # best_metric_to_save: mIoUD
+  
+  # test time augmentation
+  # TTA: false
+  TTA_pipeline:
+    flip_aug: true
+    rot90_aug: false  # 因为图片高宽大概率是不一样的
+    flip_direction: [horizontal] # [horizontal, vertical]
+    img_ratios: [0.75, 1.0, 1.25, 1.5, 1.75]
+
+# logging settings
+logger:
+  print_freq: 25
+  # print_freq: 1
+  save_checkpoint_freq: !!float 50
+  # save_checkpoint_freq: !!float 2
+  save_checkpoint_max_num: 10
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500

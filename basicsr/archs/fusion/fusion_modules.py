@@ -144,11 +144,11 @@ class FeatureFusionModule(nn.Module):
     def forward(self, x, H, W):
         B, N, _C = x.shape
         x = x.permute(0, 2, 1).reshape(B, _C, H, W).contiguous()
-        # residual = self.residual(x)
+        residual = self.residual(x)
         x = self.channel_embed(x)
         # out = self.norm(residual + x)
         # return out
-        return self.norm(x + self.residual(x))
+        return self.norm(x + residual)
 
 # Cross Modal Attention Fusion Module
 class CMAF_Module(nn.Module):

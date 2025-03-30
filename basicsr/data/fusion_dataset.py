@@ -67,7 +67,7 @@ class MSRSDataset(data.Dataset):
         seg = imread(seg_path, label=True, vis_flag=False)        
         if self.opt['phase'] == 'train':
             mask_path = os.path.join(self.mask_folder, img_name)
-            mask = imread(mask_path, label=True, vis_flag=False)
+            mask = imread(mask_path, label=False, vis_flag=False)
             enhanced_path = os.path.join(self.enhaced_folder, img_name)
             enhanced = imread(enhanced_path, label=False, vis_flag=True)
                         
@@ -76,13 +76,13 @@ class MSRSDataset(data.Dataset):
             # 缩放统一采用等比例缩放：keep_ratio=True
             if isinstance(self.opt.get('resize_ratio_range'), list):
                 resize_ratio = random.uniform(self.opt['resize_ratio_range'][0], self.opt['resize_ratio_range'][1])
-                to_augment = resize(to_augment, (int(to_augment.shape[-2]*resize_ratio), int(to_augment.shape[-1]*resize_ratio)))
+                to_augment = resize(to_augment, (int(to_augment.shape[-2]*resize_ratio), int(to_augment.shape[-1]*resize_ratio)), antialias=True)
             # 确保能crop到大小为gt_size的patch
             if to_augment.shape[-2] < self.patch_h or to_augment.shape[-1] < self.patch_w:
                 if to_augment.shape[-2]/self.patch_h > to_augment.shape[-1]/self.patch_w:
-                    to_augment = resize(to_augment, (int(to_augment.shape[-2]/to_augment[-1]*self.patch_w), self.patch_w))
+                    to_augment = resize(to_augment, (int(to_augment.shape[-2]/to_augment.shape[-1]*self.patch_w), self.patch_w), antialias=True)
                 else:
-                    to_augment = resize(to_augment, (self.patch_h, int(to_augment.shape[-1]/to_augment[-2]*self.patch_h)))
+                    to_augment = resize(to_augment, (self.patch_h, int(to_augment.shape[-1]/to_augment.shape[-2]*self.patch_h)), antialias=True)
             to_augment = self.random_crop(to_augment)
             if self.opt.get('use_rot', False) and self.patch_h == self.patch_w:
                 to_augment = torch.rot90(to_augment, random.randint(0, 3), dims=(-2, -1))
@@ -145,4 +145,4 @@ class FusionSegDataset(data.Dataset):
         }                    
 
     def __len__(self):
-        return len(self.ir_list)    
+        return len(self.ir_list)

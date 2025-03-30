@@ -3,8 +3,8 @@ import torch
 
 from basicsr.utils.registry import METRIC_REGISTRY
 
-__all__ = ['SegmentationMetric', 'calculate_mIoUD', 'calculate_mIoUI', 
-           'VIF_function', 'EN_function', 'AG_function']
+# __all__ = ['SegmentationMetric', 'calculate_mIoUD', 'calculate_mIoUI', 
+#            'VIF_function', 'EN_function', 'AG_function', 'SF_function']
 
 """
 confusionMetric 矩阵中(i, j)位置的元素代表该张图片中真实类别为i,被预测为j的像素个数；行为label，列为prediction
@@ -67,8 +67,10 @@ class SegmentationMetric(object):
         """
         # remove classes from unlabeled pixels in gt image and predict
         mask = (imgLabel >= 0) & (imgLabel < self.numClass)
+        # print(mask.shape)
         for IgLabel in ignore_labels:
             mask &= (imgLabel != IgLabel)
+        # print(mask.shape)
         label = self.numClass * imgLabel[mask] + imgPredict[mask]
         count = torch.bincount(label, minlength=self.numClass ** 2)
         confusionMatrix = count.view(self.numClass, self.numClass)
@@ -100,7 +102,12 @@ class SegmentationMetric(object):
         mask = (imgLabel >= 0) & (imgLabel < self.numClass)
         for IgLabel in ignore_labels:
             mask &= (imgLabel != IgLabel)
-        imgLabel = imgLabel[mask]
+        # print('per_image_mIoU')
+        # print(mask.shape)
+        # print(imgLabel.shape)
+        # imgLabel = imgLabel[mask].view(imgPredict.shape)
+        # print(imgLabel.shape)
+        imgLabel = torch.where(mask, imgLabel, torch.tensor(0)).to(imgPredict.device)
         not_null_label = torch.unique(imgLabel, sorted=True).tolist()  # active classes
         if len(not_null_label) == 0:  # 无效的label图（全是ignore？）
             return 0
@@ -244,3 +251,162 @@ def SF_function(F, **kwargs):
     CF1 = np.sqrt(np.mean(np.mean(CF ** 2)))
     SF = np.sqrt(RF1 ** 2 + CF1 ** 2)
     return SF
+
+def corr2(a, b):
+    a = a - np.mean(a)
+    b = b - np.mean(b)
+    r = np.sum(a * b) / np.sqrt(np.sum(a * a) * np.sum(b * b))
+    return r
+@METRIC_REGISTRY.register()
+def SCD_function(A, B, F, **kwargs):
+    r = corr2(F - B, A) + corr2(F - A, B)
+    return r
+
+
+def mutual_information(img1, img2):
+    """ 
+    Mutual information for joint histogram based on np.histogram2d
+    https://matthew-brett.github.io/teaching/mutual_information.html
+    img1, img2: np.ndarray
+    MI(X,Y)=sum_y(sum_x(p(x,y)*log(p(x,y)/(p(x)*p(y)))))
+    """
+    # Convert bins counts to probability values
+    bins_256=[i for i in range(256)]
+    hgram, x_edges, y_deges = np.histogram2d(img1.ravel(), img2.ravel(), bins=(bins_256,bins_256))
+    # hgram, x_edges, y_deges = np.histogram2d(img1.ravel(), img2.ravel(), bins=256)
+    pxy = hgram / float(np.sum(hgram))
+    px = np.sum(pxy, axis=1) # marginal for x over y
+    py = np.sum(pxy, axis=0) # marginal for y over x
+    px_py = px[:, None] * py[None, :] # Broadcast to multiply marginals
+    # Now we can do the calculation using the pxy, px_py 2D arrays
+    nzs = pxy > 0 # Only non-zero pxy values contribute to the sum
+    return np.sum(pxy[nzs] * np.log(pxy[nzs] / px_py[nzs]))
+
+
+def entropy(image):
+    """计算单个图像的熵"""
+    # 计算直方图，灰度范围0-255（对应256个灰度级）
+    hist, _ = np.histogram(image, bins=256, range=(0, 256))
+    hist = hist.astype(float)
+    total = np.sum(hist)
+    
+    if total == 0:
+        return 0.0
+    
+    # 归一化为概率并过滤零概率项
+    hist /= total
+    hist = hist[hist > 1e-10]
+    
+    # 计算熵
+    H = -np.sum(hist * np.log2(hist))
+    return H
+def joint_entropy(A, B, grey_level): # Hab(X,Y)
+    """计算两个图像的联合熵"""
+    if A.shape != B.shape:
+        raise ValueError("输入图像的尺寸必须相同")
+    
+    # 展平数组
+    A_flat = A.ravel()
+    B_flat = B.ravel()
+    
+    # 计算联合直方图
+    hist, _, _ = np.histogram2d(A_flat, B_flat, 
+                               bins=grey_level,
+                               range=[[0, grey_level], [0, grey_level]])
+    
+    total = hist.sum()
+    if total == 0:
+        return 0.0
+    
+    # 计算概率并过滤零概率项
+    p = hist / total
+    p_nonzero = p[p > 1e-10]
+    
+    H = -np.sum(p_nonzero * np.log2(p_nonzero))
+    return H
+def MI(A, B, F, grey_level=256):
+    """计算融合图像与两源图像的互信息总和"""
+    # 计算各图像的熵
+    H_A = entropy(A)
+    H_B = entropy(B)
+    H_F = entropy(F)
+    
+    # 计算联合熵
+    H_FA = joint_entropy(F, A, grey_level)
+    H_FB = joint_entropy(F, B, grey_level)
+    
+    # 计算互信息
+    MI_A = H_A + H_F - H_FA
+    MI_B = H_B + H_F - H_FB
+    
+    return MI_A + MI_B
+
+@METRIC_REGISTRY.register()
+def MI_function(A, B, F, **kwargs):
+    F = F.astype(np.int32)
+    A = A.astype(np.int32)
+    B = B.astype(np.int32)
+    MI_value_1 = MI(A, B, F)
+    # MI_value_2 = mutual_information(A, F) + mutual_information(B, F)
+    # MI_value_1计算结果总是比MI_value_2大
+    # print(MI_value_1, MI_value_2)
+    return MI_value_1
+
+# hyc还未验证该函数的正确性
+def analysis_Qabf(pA, pB, pF):
+    # 参数设置
+    Tg = 0.9994
+    kg = -15
+    Dg = 0.5
+    Ta = 0.9879
+    ka = -22
+    Da = 0.8
+
+    # Sobel算子定义
+    h1 = np.array([[1, 2, 1],
+                   [0, 0, 0],
+                   [-1, -2, -1]], dtype=np.float32)
+    h3 = np.array([[-1, 0, 1],
+                   [-2, 0, 2],
+                   [-1, 0, 1]], dtype=np.float32)
+
+    def compute_gradient_angle(image):
+        # 计算梯度和方向（使用与MATLAB一致的边界填充方式）
+        Gx = convolve2d(image, h3, mode='same', boundary='fill', fill_value=0)
+        Gy = convolve2d(image, h1, mode='same', boundary='fill', fill_value=0)
+        
+        # 梯度强度
+        G = np.sqrt(Gx**2 + Gy**2)
+        
+        # 方向计算（当Gx为0时设为π/2）
+        angle = np.full_like(G, np.pi/2, dtype=np.float32)
+        non_zero = Gx != 0
+        angle[non_zero] = np.arctan(Gy[non_zero]/Gx[non_zero])
+        
+        return G, angle
+
+    # 计算三个图像的梯度和方向
+    gA, aA = compute_gradient_angle(pA)
+    gB, aB = compute_gradient_angle(pB)
+    gF, aF = compute_gradient_angle(pF)
+
+    # 计算GAF和QAF相关参数
+    GAF = np.where(gA > gF, gF/gA, 
+             np.where(gA == gF, gF, gA/gF))
+    AAF = 1 - np.abs(aA - aF)/(np.pi/2)
+    QgAF = Tg / (1 + np.exp(kg*(GAF - Dg)))
+    QaAF = Ta / (1 + np.exp(ka*(AAF - Da)))
+    QAF = QgAF * QaAF
+
+    # 计算GBF和QBF相关参数
+    GBF = np.where(gB > gF, gF/gB, 
+             np.where(gB == gF, gF, gB/gF))
+    ABF = 1 - np.abs(aB - aF)/(np.pi/2)
+    QgBF = Tg / (1 + np.exp(kg*(GBF - Dg)))
+    QaBF = Ta / (1 + np.exp(ka*(ABF - Da)))
+    QBF = QgBF * QaBF
+
+    # 计算最终结果
+    denominator = np.sum(gA + gB)
+    numerator = np.sum(QAF*gA + QBF*gB)
+    return numerator / denominator

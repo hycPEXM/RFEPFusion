@@ -96,7 +96,7 @@ class _MatrixDecomposition2DBase(nn.Module):
     def local_step(self, x, bases, coef):
         raise NotImplementedError
 
-    # @torch.no_grad()
+    @torch.no_grad()
     def local_inference(self, x, bases):
         # (B * S, D, N)^T @ (B * S, D, R) -> (B * S, N, R)
         coef = torch.bmm(x.transpose(1, 2).contiguous(), bases)
@@ -170,7 +170,7 @@ class NMF2D(_MatrixDecomposition2DBase):
 
         return bases
 
-    # @torch.no_grad()
+    @torch.no_grad()
     def local_step(self, x, bases, coef):
         # (B * S, D, N)^T @ (B * S, D, R) -> (B * S, N, R)
         numerator = torch.bmm(x.transpose(1, 2).contiguous(), bases)
@@ -187,7 +187,7 @@ class NMF2D(_MatrixDecomposition2DBase):
         bases = bases * numerator / (denominator + 1e-6)    # bases * (x * coef) / (bases * coef^T * coef)
         # bases: (B * S, D, R); coef: (B * S, N, R)
         return bases, coef
-
+    
     def compute_coef(self, x, bases, coef):
         # (B * S, D, N)^T @ (B * S, D, R) -> (B * S, N, R)
         numerator = torch.bmm(x.transpose(1, 2).contiguous(), bases)
@@ -408,8 +408,9 @@ class LightHamHead(nn.Module):
         ) for level in inputs[1:]]
 
         inputs = torch.cat(inputs, dim=1)
+        # print(inputs.shape)
         x = self.squeeze(inputs)
-        del inputs
+        # del inputs
         x = self.hamburger(x)  # B,C=(256),H,W
 
         output = self.align(x)

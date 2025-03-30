@@ -27,6 +27,17 @@ def init_weights(module):
             constant_(module.weight, 1.0)
         if hasattr(module, 'bias') and module.bias is not None:
             constant_(module.bias, 0)
+            
+def init_weights_temp(module):
+    if isinstance(module,  nn.Linear):
+        trunc_normal_(module.weight, std=.02)
+        if module.bias is not None:
+            constant_(module.bias, 0)
+    elif isinstance(module, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm)):
+        if hasattr(module, 'weight') and module.weight is not None:
+            constant_(module.weight, 1.0)
+        if hasattr(module, 'bias') and module.bias is not None:
+            constant_(module.bias, 0)
 
 class UpsampleConv(nn.Module):
     """上采样卷积模块
@@ -43,12 +54,23 @@ class UpsampleConv(nn.Module):
     def __init__(self, in_channels, out_channels, scale=2, norm_layer=nn.BatchNorm2d, act_layer=nn.GELU):
         super(UpsampleConv, self).__init__()
         if scale == 2:
-            self.upsample = nn.ConvTranspose2d(
-                in_channels, 
-                out_channels,
-                kernel_size=2,
-                stride=2
-            )            
+            # self.upsample = nn.ConvTranspose2d(
+            #     in_channels, 
+            #     out_channels,
+            #     kernel_size=2,
+            #     stride=2
+            # )         
+            self.upsample = nn.Sequential(
+                nn.ConvTranspose2d(
+                    in_channels,
+                    out_channels,
+                    kernel_size=2,
+                    stride=2,
+                    bias=False
+                ),
+                norm_layer(out_channels),
+                act_layer()
+            )   
         elif scale == 4:
             self.upsample = nn.Sequential(
                 nn.ConvTranspose2d(

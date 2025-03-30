@@ -13,6 +13,7 @@ from basicsr.utils import (AvgTimer, MessageLogger, check_resume, get_env_info, 
                            init_tb_logger, init_wandb_logger, make_exp_dirs, mkdir_and_rename, scandir)
 from basicsr.utils.options import copy_opt_file, dict2str, parse_options
 
+import numpy as np
 
 def init_tb_loggers(opt):
     # initialize wandb logger before tensorboard logger to allow proper sync
@@ -30,7 +31,7 @@ def create_train_val_dataloader(opt, logger):
     # create train and val dataloaders
     train_loader, val_loaders = None, []
     for phase, dataset_opt in opt['datasets'].items():
-        if phase == 'train':
+        if phase == 'train': # drop_last设置为True！
             dataset_enlarge_ratio = dataset_opt.get('dataset_enlarge_ratio', 1)
             train_set = build_dataset(dataset_opt)
             train_sampler = EnlargedSampler(train_set, opt['world_size'], opt['rank'], dataset_enlarge_ratio)
@@ -42,7 +43,10 @@ def create_train_val_dataloader(opt, logger):
                 sampler=train_sampler,
                 seed=opt['manual_seed'])
 
-            num_iter_per_epoch = math.ceil(
+            # num_iter_per_epoch = math.ceil(
+            #     len(train_set) * dataset_enlarge_ratio / (dataset_opt['batch_size_per_gpu'] * opt['world_size']))
+            # 因为采用drop_last=True，hyc认为这里num_iter_per_epoch的计算应该改成floor的方式
+            num_iter_per_epoch = math.floor(
                 len(train_set) * dataset_enlarge_ratio / (dataset_opt['batch_size_per_gpu'] * opt['world_size']))
             total_iters = int(opt['train']['total_iter'])
             total_epochs = math.ceil(total_iters / (num_iter_per_epoch))
@@ -96,6 +100,8 @@ def train_pipeline(root_path):
 
     torch.backends.cudnn.benchmark = True
     # torch.backends.cudnn.deterministic = True
+    
+    val_start_iter = opt.get('val_start_iter', 0)
 
     # load resume states if necessary
     resume_state = load_resume_state(opt)
@@ -121,6 +127,25 @@ def train_pipeline(root_path):
     result = create_train_val_dataloader(opt, logger)
     train_loader, train_sampler, val_loaders, total_epochs, total_iters = result
 
+    # torch.autograd.set_detect_anomaly(True)
+    
+    # print("detecting NaN in train_loader...")
+    # for batch in train_loader:
+    #     for k, v in batch.items():
+    #         if k!='img_name':
+    #             if torch.isnan(v).any():
+    #                 print(f"NaN detected in {k}!")
+    #             if k == 'seg':
+    #                 if v.max().item() > 8 or v.min().item() < 0:
+    #                     print(k, "abnormal!")
+    #             else:
+    #                 if v.max().item() > 1+1e-6 or v.min().item() < -1e-6:
+    #                     print(k, "abnormal!")
+    #             # print(k, "--- max_value:", v.max().item(), "min_value:", v.min().item())
+    #             # import time
+    #             # time.sleep(3)
+    # print("detection finished.")
+    
     # create model
     model = build_model(opt)
     if resume_state:  # resume training
@@ -152,7 +177,10 @@ def train_pipeline(root_path):
     data_timer, iter_timer = AvgTimer(), AvgTimer()
     start_time = time.time()
 
-    for epoch in range(start_epoch, total_epochs + 1):
+    if model.weighting_strategy is not None and model.train_loss_buffer is None:
+        model.train_loss_buffer = np.zeros([model.num_task, total_epochs])
+    # for epoch in range(start_epoch, total_epochs + 1):
+    for epoch in range(start_epoch, total_epochs):  # 没必要用total_epochs + 1吧，改成一个epoch-based的训练方式
         train_sampler.set_epoch(epoch)
         prefetcher.reset()
         train_data = prefetcher.next()
@@ -165,7 +193,7 @@ def train_pipeline(root_path):
                 break            
             # training
             model.feed_data(train_data)
-            model.optimize_parameters(current_iter)
+            model.optimize_parameters(current_iter, epoch)
             """
             UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
             warnings.warn("Detected call of `lr_scheduler.step()` before `optimizer.step()`. "
@@ -191,7 +219,7 @@ def train_pipeline(root_path):
             #     model.save(epoch, current_iter)
 
             # validation
-            if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0):
+            if opt.get('val') is not None and current_iter >= val_start_iter and (current_iter % opt['val']['val_freq'] == 0):
                 if len(val_loaders) > 1:
                     logger.warning('Multiple validation datasets are *only* supported by SRModel.')
                 for val_loader in val_loaders:
@@ -199,6 +227,7 @@ def train_pipeline(root_path):
 
             # 保存模型应该在validation之后，因为validation之后会更新metric_results
             # save models and training states
+            # if current_iter >= val_start_iter and current_iter % opt['logger']['save_checkpoint_freq'] == 0:
             if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
                 logger.info('Saving models and training states.')
                 model.save(epoch, current_iter)
@@ -207,7 +236,11 @@ def train_pipeline(root_path):
             iter_timer.start()
             train_data = prefetcher.next()
         # end of iter
-
+        if model.weighting_strategy is not None:
+            # 取这个epoch里loss的平均值
+            model.train_loss_buffer[:, epoch] = np.array(model.train_loss_buffer_per_epoch).mean(axis=0)
+            # 重置，重新统计一个epoch里各个iter的loss
+            model.train_loss_buffer_per_epoch = []
     # end of epoch
 
     consumed_time = str(datetime.timedelta(seconds=int(time.time() - start_time)))
@@ -216,22 +249,27 @@ def train_pipeline(root_path):
     model.save(epoch=-1, current_iter=-1)  
     # -1 stands for the latest; epoch=-1 means not saving the best training states, while current_iter=-1 means saving the latest network
     if opt.get('val') is not None:
+        current_iter -= 1
         for val_loader in val_loaders:
-            # model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
+            # 确保用最后的模型再验证一遍；此外推理计算metric时每次的结果有细微偏差，顺便再测一次
+            print("latest model validating...")
+            model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
             
             # 强制保存模型最后的可视化结果
             # model.validation(val_loader, current_iter, tb_logger, True) 
              
             # 用metric最好的模型，推理得到可视化结果
+            print("best model validating...")
             if opt['train'].get('ema_decay', 0) > 0:
                 model.load_network(model.net_g_ema, model.best_net_g_ema_path, True, 'params_ema')
                 model.validation(val_loader, current_iter, tb_logger, True)
             else:
                 model.load_network(model.net_g, model.best_net_g_path, True, 'params')
                 model.validation(val_loader, current_iter, tb_logger, True)
-            # TTA推理的可视化结果，并且测测TTA（multi-scale inference）的指标，看看能提升多少
+            # 最佳模型TTA推理的可视化结果，并且测测TTA（multi-scale inference）的指标，看看能提升多少
             # 但是“平时”是默认不使用TTA的，这样测的才是“纯粹”的metric
             model.TTA = True
+            print("best model validating using TTA...")
             if opt['train'].get('ema_decay', 0) > 0:
                 model.load_network(model.net_g_ema, model.best_net_g_ema_path, True, 'params_ema')
                 model.validation(val_loader, current_iter, tb_logger, True)

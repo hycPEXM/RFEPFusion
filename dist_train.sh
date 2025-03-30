@@ -14,15 +14,31 @@
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_ir.yml --launcher pytorch
 
 # stage 1.4 train_LLIE_vi
-# 训练老是中断，只能这样暂时应付一下了
+# 训练老是中断，只能这样暂时应付一下了（同一个命令复制几次）
 # /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_LLIE_vi/best_niqe_10000_niqe_4.915.pth
-CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_vi.yml --launcher pytorch --auto_resume
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_LLIE_vi.py -opt options/fusion/train_LLIE_vi.yml --launcher pytorch --auto_resume
 
 
 ##############################
 # stage2: train fusion_segmentation
 ##############################
+# debug
+# CUDA_VISIBLE_DEVICES=1 torchrun --nproc_per_node=1 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_debug.yml --launcher pytorch
+# CUDA_VISIBLE_DEVICES=1 torchrun --nproc_per_node=1 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_debug.yml --launcher pytorch --auto_resume
+# CUDA_VISIBLE_DEVICES=1 torchrun --nproc_per_node=1 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_debug.yml --launcher pytorch 
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_debug.yml --launcher pytorch
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_debug.yml --launcher pytorch --auto_resume
 
+password="20220926Hyc!@#"
+echo "$password" | sudo -S ls
+for i in {1..6000}
+do
+    CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register.yml --launcher pytorch --auto_resume
+    sudo pgrep -f python | xargs sudo kill -9
+    sleep 10
+done
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register.yml --launcher pytorch --auto_resume
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register.yml --launcher pytorch
 
 ##############################
 # stage3: train registration

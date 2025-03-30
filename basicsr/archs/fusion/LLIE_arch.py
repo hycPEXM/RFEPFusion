@@ -83,11 +83,11 @@ class Illumination_Estimator(nn.Module):
         
         mean_c = img.mean(dim=1).unsqueeze(1)  # illumination prior
         input = torch.cat([img,mean_c], dim=1)
-        del mean_c
+        # del mean_c
 
         input = self.conv2(self.conv1(input))
         illu_fea = self.depth_conv(input)
-        del input
+        # del input
         illu_map = self.pw_conv(illu_fea)
         return illu_fea, illu_map
 
@@ -177,7 +177,7 @@ class IG_MHA(nn.Module):
         v_inp = self.to_v(x)  # b,hw,c
         illu_attn = illu_fea_trans # illu_fea->illu_fea_trans: b,c,h,w -> b,h,w,c
 
-        # del x
+        # # del x
 
         # from einops import rearrange
         #  q, k, v, illu_attn = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.num_heads),
@@ -193,25 +193,25 @@ class IG_MHA(nn.Module):
         out_p = self.pos_emb(v_inp.view(b, h, w, c).permute(
             0, 3, 1, 2).contiguous()).permute(0, 2, 3, 1).contiguous()
         
-        del q_inp, k_inp, v_inp, illu_attn  
+        # del q_inp, k_inp, v_inp, illu_attn  
 
         k = k.transpose(-2, -1).contiguous()
         q = F.normalize(q, dim=-2, p=2)
         k = F.normalize(k, dim=-1, p=2)
         attn = (k @ q)   # A = K^T*Q   (b,heads,dim_head,hw) * (b,heads,hw,dim_head) -> (b,heads,dim_head,dim_head)
         
-        # del k, q
+        # # del k, q
 
         attn = attn * self.rescale
         attn = attn.softmax(dim=-1)
         x = v@attn # b,heads,hw,dim_head
 
-        del q, k, v, attn
+        # del q, k, v, attn
 
         x = x.transpose(1,2).contiguous().view(b,n,c)
         out_c = self.proj(x).view(b, h, w, c)
 
-        del x
+        # del x
         
         # out = out_c + out_p
 
@@ -286,7 +286,7 @@ class LLIE_Encoder(nn.Module):
         illu_guide, light_up_map = self.illumination_estimator(vi)
         # illu_guide: b,c=64,h,w; light_up_map: b,c=3,h,w        
         light_up = vi * light_up_map  # I_light_up = R + C, where C is the corruption term to be eliminated in following stages
-        del light_up_map
+        # del light_up_map
         light_up = self.conv_bridge(light_up)  # b,c=64,h,w
         b, c, h, w = light_up.shape
         # light_up = light_up.flatten(2).transpose(1, 2).contiguous()  # b,hw,c=64
@@ -301,7 +301,7 @@ class LLIE_Encoder(nn.Module):
         light_up = light_up.permute(0, 2, 3, 1).contiguous()  # b,h,w,c
         light_up = self.IGAB2(light_up, illu_guide)
         # Don't forget that the first stage of small setting is 2, not 3
-        del illu_guide
+        # del illu_guide
         if self.depths_in_stage == 3:
             # light_up = light_up.view(b, h * w, c)
             light_up = light_up.permute(0, 3, 1, 2).contiguous()  # b,c,h,w

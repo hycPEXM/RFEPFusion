@@ -32,8 +32,7 @@ class BaseModel():
         self.model_path_list.sort()
         self.best_net_g_path = None
         self.best_net_g_ema_path = None
-        self.save_best_metric = self.opt['val'].get('best_metric_to_save', 'psnr')
-        self.TTA = self.opt['val'].get('TTA', False)
+        self.save_best_metric = self.opt['val'].get('best_metric_to_save', 'psnr')        
 
     def feed_data(self, data):
         pass
@@ -245,7 +244,7 @@ class BaseModel():
         # 文件的命令规则：{net_label}_{current_iter}后面跟着每个metric名字和对应值
         save_filename = f'{net_label}_{current_iter}'
         with_metrics = self.opt['val'].get('metrics') is not None
-        if save_metric_info and with_metrics:
+        if save_metric_info and with_metrics and hasattr(self, 'metric_results'):
             for metric, value in self.metric_results.items():
                 save_filename += f'_{metric}_{value:.3f}'
         save_filename += '.pth'
@@ -383,6 +382,8 @@ class BaseModel():
                 state['schedulers'].append(s.state_dict())
             if hasattr(self, 'best_metric_results'):
                 state['best_metric'] = self.best_metric_results
+            if hasattr(self, 'train_loss_buffer') and self.train_loss_buffer is not None:
+                state['train_loss_buffer'] = self.train_loss_buffer
             save_filename = f'{current_iter}.state'
             save_path = os.path.join(self.opt['path']['training_states'], save_filename)
 
@@ -423,7 +424,10 @@ class BaseModel():
             self.optimizers[i].load_state_dict(o)
         for i, s in enumerate(resume_schedulers):
             self.schedulers[i].load_state_dict(s)
-        self.best_metric_results = resume_state['best_metric']
+        if 'best_metric' in resume_state:
+            self.best_metric_results = resume_state['best_metric']
+        if 'train_loss_buffer' in resume_state:
+            self.train_loss_buffer = resume_state['train_loss_buffer']
 
     def reduce_loss_dict(self, loss_dict):
         """reduce loss dict.
