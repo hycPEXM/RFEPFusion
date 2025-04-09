@@ -28,15 +28,16 @@
 # CUDA_VISIBLE_DEVICES=1 torchrun --nproc_per_node=1 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_debug.yml --launcher pytorch 
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_debug.yml --launcher pytorch
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_debug.yml --launcher pytorch --auto_resume
+# password="20220926Hyc!@#"
+# for i in {1..600}
+# do    
+#     # echo "$password" | sudo -S ls
+#     # sudo pgrep -f python | xargs sudo kill -9
+#     CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_0406.yml --launcher pytorch --auto_resume        
+#     # sleep 30
+# done
+CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_0406.yml --launcher pytorch
 
-password="20220926Hyc!@#"
-echo "$password" | sudo -S ls
-for i in {1..6000}
-do
-    CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register.yml --launcher pytorch --auto_resume
-    sudo pgrep -f python | xargs sudo kill -9
-    sleep 10
-done
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register.yml --launcher pytorch --auto_resume
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register.yml --launcher pytorch
 

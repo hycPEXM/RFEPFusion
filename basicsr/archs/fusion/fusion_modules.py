@@ -207,6 +207,21 @@ class SIM(nn.Module):
 class MultiScaleFusion(nn.Module):
     def __init__(self, in_channels, mid_channels=32, out_channels=3, dilation_scales=[1, 2, 4]):
         super(MultiScaleFusion, self).__init__()
+        # self.convs_pre = nn.Sequential(
+        #     nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False),
+        #     nn.BatchNorm2d(in_channels),
+        #     nn.GELU(),
+        #     nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False),
+        #     nn.BatchNorm2d(in_channels),            
+        # )
+        self.gelu = nn.GELU()
+        
+        self.convs_pre = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(in_channels),
+            nn.GELU()
+        )
+        
         # self.scales = dilation_scales
         
         # Sobel算子
@@ -219,7 +234,7 @@ class MultiScaleFusion(nn.Module):
         #     nn.BatchNorm2d(mid_channels),
         #     nn.GELU()
         # )
-
+        
         self.convs = nn.ModuleList([
             nn.Sequential(
                 nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=dilation, dilation=dilation, bias=False),
@@ -229,8 +244,7 @@ class MultiScaleFusion(nn.Module):
         ])
         self.conv_mixing = nn.Sequential(
             nn.Conv2d(mid_channels * len(dilation_scales), in_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(in_channels),
-            nn.GELU()
+            nn.BatchNorm2d(in_channels)            
         )
         self.conv_out = nn.Sequential(
             nn.Conv2d(in_channels, in_channels//2, kernel_size=3, padding=1, bias=False),
@@ -241,8 +255,10 @@ class MultiScaleFusion(nn.Module):
         )
 
     def forward(self, x):
+        # x = self.gelu(x + self.convs_pre(x))
+        x = self.convs_pre(x)
         out = [conv(x) for conv in self.convs]
         out = torch.cat(out, dim=1)
-        out = self.conv_mixing(out) + x
+        out = self.gelu(self.conv_mixing(out) + x)
         out = self.conv_out(out)
         return (out+1)/2

@@ -25,6 +25,8 @@ class EnlargedSampler(Sampler):
         self.epoch = 0
         self.num_samples = math.ceil(len(self.dataset) * ratio / self.num_replicas)
         self.total_size = self.num_samples * self.num_replicas
+        # print(f"EnlargedSampler: num_samples={self.num_samples}, "
+        #       f"total_size={self.total_size}, ratio={ratio}")
 
     def __iter__(self):
         # deterministically shuffle based on epoch

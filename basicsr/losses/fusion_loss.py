@@ -11,7 +11,7 @@ from basicsr.utils.registry import LOSS_REGISTRY
 from basicsr.losses.loss_util import weighted_loss
 # from loss_util import weighted_loss
 
-from .lovasz import lovasz_softmax
+from basicsr.losses.lovasz import lovasz_softmax
 
 __all__ = ['ColorLoss', 'SSIMLoss', 'IntensityLoss', 'TextureLoss', 'SegLoss', 'HybridSegLoss']
 
@@ -28,17 +28,29 @@ def color_cosine_similarity_loss(pred, target):
 
 @LOSS_REGISTRY.register()
 class ColorLoss(nn.Module):
-    def __init__(self, loss_weight=1.0, reduction='mean', **kwargs):
+    def __init__(self, loss_weight=1.0, reduction='mean', mask=False, choice='vi', **kwargs):
         super(ColorLoss, self).__init__()
         if reduction not in ['none', 'mean', 'sum']:
             raise ValueError(f'Unsupported reduction mode: {reduction}. Supported ones are: {_reduction_modes}')
 
         self.loss_weight = loss_weight
         self.reduction = reduction
+        self.choice = choice
+        self.mask = mask
 
-    def forward(self, vi, fusion, weight=None, **kwargs):
+    def forward(self, vi, fusion, enhanced, mask_person, weight=None, **kwargs):
         # print(fusion)        
-        return self.loss_weight * color_cosine_similarity_loss(vi, fusion, weight, reduction=self.reduction)
+        if self.mask:
+            mask = ((mask_person-1).abs()<1e-6).repeat(1,3,1,1)
+            fusion[mask] = 0
+            enhanced[mask] = 0
+            vi[mask] = 0
+        if self.choice == 'vi':
+            return self.loss_weight * color_cosine_similarity_loss(vi, fusion, weight, reduction=self.reduction)
+        elif self.choice == 'enhanced':
+            return self.loss_weight * color_cosine_similarity_loss(enhanced, fusion, weight, reduction=self.reduction)
+        else:
+            raise ValueError(f'Unsupported choice mode: {self.choice}. Supported ones are: [vi, enhanced]')
 
 def gaussian(window_size, sigma):
     gauss = torch.Tensor([np.exp(-(x - window_size//2)**2/float(2*sigma**2)) for x in range(window_size)])
@@ -186,14 +198,16 @@ class SSIMLoss(nn.Module):
 
 @LOSS_REGISTRY.register()
 class IntensityLoss(nn.Module):
-    def __init__(self, loss_weight=1.0, reduction='mean', lambda_=1.5, choice='Y', **kwargs):
+    def __init__(self, loss_weight=1.0, reduction='mean', lambda_ir=1.5, 
+                 lambda_vi=1.0, choice='Y', **kwargs):
         super(IntensityLoss, self).__init__()
         if reduction not in ['none', 'mean', 'sum']:
             raise ValueError(f'Unsupported reduction mode: {reduction}. Supported ones are: {_reduction_modes}')
 
         self.loss_weight = loss_weight
         # self.reduction = reduction
-        self.lambda_ir = lambda_
+        self.lambda_ir = lambda_ir
+        self.lambda_vi = lambda_vi
         self.choice = choice
 
     def forward(self, ir, enhanced, Y_enhanced, fusion, Y_fusion, mask_person, weight=None, **kwargs):
@@ -202,17 +216,53 @@ class IntensityLoss(nn.Module):
         if self.choice == 'Y':
             weight_ir = torch.where((mask_person-1).abs() < 1e-6, (mask_person + self.lambda_ir * ir)/(1 + self.lambda_ir * (ir + Y_enhanced) + 1e-8), ir/(ir + Y_enhanced + 1e-8))
             # 其他就按正常的权重计算
-            weight_vi = Y_enhanced/(ir + Y_enhanced + 1e-8)
+            weight_vi = self.lambda_vi * Y_enhanced/(ir + Y_enhanced + 1e-8)
             # weight_vi = 1 - weight_ir
             return self.loss_weight * ((weight_ir * (ir - Y_fusion)).abs().mean() + (weight_vi * (Y_enhanced - Y_fusion)).abs().mean())
         elif self.choice == 'RGB':
             weight_ir = torch.where((mask_person-1).abs() < 1e-6, (mask_person + self.lambda_ir * ir)/(1 + self.lambda_ir * (ir + Y_enhanced) + 1e-8), ir/(ir + Y_enhanced + 1e-8))
-            weight_vi = Y_enhanced/(ir + Y_enhanced + 1e-8)
+            weight_vi = self.lambda_vi * Y_enhanced/(ir + Y_enhanced + 1e-8)
+            return self.loss_weight * ((weight_ir * (ir - Y_fusion)).abs().mean() + (weight_vi * (enhanced - fusion)).abs().mean())
+        elif self.choice == 'Y_':
+            weight_ir = (mask_person + self.lambda_ir * ir)/(1 + self.lambda_ir * (ir + Y_enhanced) + 1e-8)
+            weight_vi = (1 - weight_ir) * self.lambda_vi
+            # return self.loss_weight * ((weight_ir * (ir - Y_fusion)).abs().mean() + (weight_vi * (Y_enhanced - Y_fusion)).abs().mean())
+            return self.loss_weight * (weight_ir * F.l1_loss(ir, Y_fusion) + 
+                                       weight_vi * F.l1_loss(Y_enhanced, Y_fusion)).mean()
+        elif self.choice == 'RGB_':
+            weight_ir = (mask_person + self.lambda_ir * ir)/(1 + self.lambda_ir * (ir + Y_enhanced) + 1e-8)
+            weight_vi = (1 - weight_ir) * self.lambda_vi
             return self.loss_weight * ((weight_ir * (ir - Y_fusion)).abs().mean() + (weight_vi * (enhanced - fusion)).abs().mean())
         else:
-            raise ValueError(f'Unsupported choice mode: {self.choice}. Supported ones are: [Y, RGB]')
+            raise ValueError(f'Unsupported choice mode: {self.choice}. Supported ones are: [Y, RGB, Y_, RGB_]')
 
-        
+@LOSS_REGISTRY.register()
+class AuxiliaryIntensityLoss(nn.Module):
+    def __init__(self, loss_weight=1.0, reduction='mean', 
+                 choice='mask_based', **kwargs):
+        super(AuxiliaryIntensityLoss, self).__init__()
+        if reduction not in ['none', 'mean', 'sum']:
+            raise ValueError(f'Unsupported reduction mode: {reduction}. Supported ones are: {_reduction_modes}')
+
+        self.loss_weight = loss_weight
+        # self.reduction = reduction
+        self.choice = choice
+
+    def forward(self, ir, Y_enhanced, Y_fusion, Y_vi, mask_person, weight=None, **kwargs):
+        if self.choice == 'mask_based':
+            std_vi = std(Y_vi) # 这里算的是vi而不是enhanced！
+            std_ir = std(ir)
+            zero = torch.zeros_like(std_ir)
+            one = torch.ones_like(std_ir)
+            map_ir = torch.where(std_ir>std_vi, one, zero)
+            map_ir = torch.where(map_ir+mask_person>0, one, zero)
+            map_vi = 1 - map_ir
+            return self.loss_weight * (map_ir * F.l1_loss(Y_fusion, ir) + map_vi * F.l1_loss(Y_fusion, Y_enhanced)).mean()
+        elif self.choice == 'max':
+            return self.loss_weight * F.l1_loss(Y_fusion, torch.max(Y_enhanced, ir))            
+        else:
+            raise ValueError(f'Unsupported choice mode: {self.choice}. Supported ones are: [mask_based, max]')
+
     
 class Sobelxy(nn.Module):
     def __init__(self, device):
@@ -242,12 +292,13 @@ class TextureLoss(nn.Module):
 
         self.loss_weight = loss_weight
         self.device = device
+        self.sobel = Sobelxy(self.device)
         # self.reduction = reduction
     def forward(self, ir, Y_vi, Y_fusion, weight=None, **kwargs):
-        sobel = Sobelxy(self.device)
-        ir_grad_x, ir_grad_y = sobel(ir)
-        vi_grad_x, vi_grad_y = sobel(Y_vi)
-        fusion_grad_x, fusion_grad_y = sobel(Y_fusion)
+        
+        ir_grad_x, ir_grad_y = self.sobel(ir)
+        vi_grad_x, vi_grad_y = self.sobel(Y_vi)
+        fusion_grad_x, fusion_grad_y = self.sobel(Y_fusion)
         return self.loss_weight * (F.l1_loss(fusion_grad_x, torch.max(ir_grad_x, vi_grad_x)) 
                                    + F.l1_loss(fusion_grad_y, torch.max(ir_grad_y, vi_grad_y)))
 
@@ -641,7 +692,8 @@ class SegLoss(nn.Module):
         elif choice == 'OHEM':
             # 可以试一下ignore_simple_sample_factor=4或8
             # self.loss = OhemCELoss(thresh=kwargs['thresh'], ignore_lb=255, ignore_simple_sample_factor=kwargs['ignore_simple_sample_factor'])
-            self.loss = OhemCELoss(thresh=0.75, ignore_lb=255, ignore_simple_sample_factor=16)
+            ignore_simple_sample_factor = kwargs.get('ignore_simple_sample_factor', 16)
+            self.loss = OhemCELoss(thresh=0.75, ignore_lb=255, ignore_simple_sample_factor=ignore_simple_sample_factor)
         elif choice == 'lovasz':
             self.loss = lovasz_softmax
         elif choice == 'jaccard':

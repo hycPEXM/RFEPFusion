@@ -161,6 +161,32 @@ class DWA(AbsWeighting):
         # loss.backward()
         return loss  # 改写以支持amp训练
 
+class DWA_hyc(AbsWeighting):  # 类似于GradNorm，把连续两个epoch的比值换成上一代与第一代的比值
+    r"""Dynamic Weight Average (DWA).
+    
+    This method is proposed in `End-To-End Multi-Task Learning With Attention (CVPR 2019) <https://openaccess.thecvf.com/content_CVPR_2019/papers/Liu_End-To-End_Multi-Task_Learning_With_Attention_CVPR_2019_paper.pdf>`_ \
+    and implemented by modifying from the `official PyTorch implementation <https://github.com/lorenmt/mtan>`_. 
+
+    Args:
+        T (float, default=2.0): The softmax temperature.
+
+    """
+    def __init__(self, T=2.0, device='cpu', num_task=1, **kwargs):
+        super(DWA_hyc, self).__init__()
+        self.T = T
+        self.device = device
+        self.task_num = num_task
+    
+    def backward(self, losses, epoch, train_loss_buffer, **kwargs):
+        if epoch > 1:
+            w_i = torch.Tensor(train_loss_buffer[:, epoch-1]/train_loss_buffer[:, 0]).to(self.device)
+            batch_weight = self.task_num*F.softmax(w_i/self.T, dim=-1)
+        else:
+            batch_weight = torch.ones_like(losses).to(self.device)
+        loss = torch.mul(losses, batch_weight).sum()
+        # loss.backward()
+        return loss  
+    
 class UW(AbsWeighting):
     r"""Uncertainty Weights (UW).
     
@@ -172,12 +198,15 @@ class UW(AbsWeighting):
         super(UW, self).__init__() 
         self.device = device
         self.task_num = num_task
-        self.loss_scale = nn.Parameter(torch.tensor([-0.5]*self.task_num, device=self.device))
+        self.loss_scale = nn.Parameter(torch.tensor([-0.75]*self.task_num, device=self.device))
         
     def backward(self, losses, epoch=-1, train_loss_buffer=None, **kwargs):
+        # print("losses:", losses)
+        # print("loss_scale:", self.loss_scale)
+        # print(losses/self.loss_scale)
         loss = (losses/(2*self.loss_scale.exp())+self.loss_scale/2).sum()
         # loss.backward()
-        # return (1/(2*torch.exp(self.loss_scale))).detach().cpu().numpy()
+        # return (1/(2*torch.exp(self.loss_scale))).detach().cpu().numpy()        
         return loss
 
 
@@ -388,3 +417,5 @@ class FairGrad(AbsWeighting):
         torch.sum(ww*losses).backward()
 
         return w_cpu
+
+# Dynamic task prioritization for multitask learning

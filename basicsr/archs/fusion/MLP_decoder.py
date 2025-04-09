@@ -33,7 +33,8 @@ class DecoderHead(nn.Module):
                  dropout_ratio=0.1,
                  norm_layer=nn.BatchNorm2d,
                 #  embed_dim=512,
-                embed_dim = [256, 480, 640],
+                # embed_dim = [256, 480, 640],
+                 embed_dim = [960, 864, 768],                
                  align_corners=False):    
         super(DecoderHead, self).__init__()
         self.num_classes = num_classes

@@ -11,7 +11,7 @@ manual_seed: 666
 # pad_size: 4
 # use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
 seg_num_class: 9
-val_start_iter: 12000
+# val_start_iter: 0
 
 use_amp: false
 infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
@@ -34,7 +34,7 @@ datasets:
 
     # gt_size: [480, 360]  # [weight, height]
     gt_size: 320
-    # gt_size: 360
+    # gt_size: 384
     resize_ratio_range: [0.75, 1.8]
     use_flip: true # both horizontal flip and vertical flip
     # use_rot: false  # if weight != height, then use_rot must be false
@@ -42,8 +42,8 @@ datasets:
     use_transpose: true
 
     # data loader
-    num_worker_per_gpu: 4
-    batch_size_per_gpu: 4
+    num_worker_per_gpu: 3
+    batch_size_per_gpu: 3
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
     # pin_memory: true
@@ -70,7 +70,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_fusion_seg_no_register_base_color_2_0404/best_entropy_26800_mIoUD_0.666_mIoUI_0.658_entropy_6.917_AG_3.783_SF_11.539_SSIM_1.192.pth
+  pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_fusion_seg_no_register_archived_20250406_130004/best_mIoUD_120000_mIoUD_0.736_mIoUI_0.713_entropy_6.963_AG_3.856_SF_11.779_SSIM_1.147.pth
   strict_load_g: true
   resume_state: ~
 
@@ -80,7 +80,7 @@ train:
   optim_g:
     type: AdamW
     lr: !!float 2e-6  # 初始学习率，实际上不会被用到
-    weight_decay: 0.0005
+    weight_decay: 0.001
     betas: [0.9, 0.99]
 
   use_grad_clip: true
@@ -95,23 +95,23 @@ train:
 
   # iter-based training
   # total_iter: 120000  
-  total_iter: 120000  
+  total_iter: 12000  
   # total_iter: 2 
   # total_epoch: 500
   warmup_iter: -1  # no warm up
   scheduler:
     type: OneCycleLR
     # max_lr: !!float 5e-4
-    max_lr: !!float 6e-4
+    max_lr: !!float 2e-4
     # total_steps: 120000  # 保持和total_iter一致 
-    total_steps: 120000 
-    pct_start: 0.2
-    div_factor: 8
-    final_div_factor: 600
+    total_steps: 12000 
+    pct_start: 0.05
+    div_factor: 1
+    final_div_factor: 200
     # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
 
   # 多任务学习动态调整权重
-  MTL_auto_weighting: DWA  # [DWA, UW, GradNorm, MGDA, FairGrad, DTP, Adatask]  Auto-Lambda需要一个inner、outer batch的bilevel训练方式，还得重新改optimize部分代码，太麻烦了
+  # MTL_auto_weighting: DWA  # [DWA, UW, GradNorm, MGDA, FairGrad, DTP, Adatask]  Auto-Lambda需要一个inner、outer batch的bilevel训练方式，还得重新改optimize部分代码，太麻烦了
   # MTL_auto_weighting: DWA_hyc
   # DWA: true
 
@@ -120,7 +120,7 @@ train:
     # fusion = color(use_lq_for_l_color，对应vi选项) + intensity + texture + SSIM
     color:
       type: ColorLoss
-      loss_weight: 1.5
+      loss_weight: 1.0
       # choice: enhanced  # [vi, enhanced]
       choice: vi
       # mask: true
@@ -135,25 +135,25 @@ train:
     intensity:
       type: IntensityLoss
       # loss_weight: 4.0
-      loss_weight: 1.5
+      loss_weight: 1.75
       choice: Y_  # [Y, RGB, Y_, RGB_]
       # choice: RGB
       # max_auxiliary: 4
       reduction: mean
-      lambda_ir: 1.5
+      lambda_ir: 2.0
       # lambda_ir: 2.0
       lambda_vi: 1.0
     int_aux:
       type: AuxiliaryIntensityLoss
       choice: mask_based  # [mask_based, max]
       # loss_weight: 1.1
-      loss_weight: 3.3
+      loss_weight: 2.75
       reduction: mean
     # 计算时记得传入device参数
     texture:
       type: TextureLoss
       # loss_weight: 4.0
-      loss_weight: 9.0
+      loss_weight: 15.0
       reduction: mean
       device: cuda
     SSIM:
@@ -173,7 +173,8 @@ train:
       # (sum(num_samples_c)/num_samples_c[i])/sum(sum(num_samples_c)/num_samples_c[i])，
       # 以缓解类别不均衡问题
       num_class: 9
-      loss_weight: 1.0
+      loss_weight: 8
+      ignore_simple_sample_factor: 8
       reduction: mean
       # type: HybridSegLoss
       # choices: [focal, jaccard]
@@ -182,7 +183,7 @@ train:
 
 # validation settings
 val:
-  val_freq: !!float 200
+  val_freq: !!float 100
   # val_freq: !!float 2
   save_img: false
   # save_img: true
@@ -245,7 +246,7 @@ val:
 logger:
   print_freq: 50
   # print_freq: 1
-  save_checkpoint_freq: !!float 200
+  save_checkpoint_freq: !!float 100
   # save_checkpoint_freq: !!float 2
   save_checkpoint_max_num: 10
   use_tb_logger: true

@@ -17,6 +17,8 @@ from basicsr.data.fusion_utils import RGB2YCrCb, YCbCr2RGB
 # from .auto_weighting import *
 import basicsr.models.fusion.auto_weighting as weighting
 
+# from PIL import Image
+
 try :
     from torch.cuda.amp import autocast, GradScaler
     load_amp = True
@@ -52,6 +54,8 @@ def get_palette():
         ]
     )
     return palette
+
+visualize_palette = get_palette()
 
 # def visualize(save_name, label):
 #     palette = get_palette()
@@ -154,6 +158,7 @@ class RFEPFusionNoRegModel(BaseModel):
         #     raise ValueError('auto weighting currently can\'t used with amp training') 
         
         if self.weighting_strategy:
+            print("MTL auto weighting...")
             self.weighting_strategy = getattr(weighting, self.weighting_strategy)(device=self.device, num_task=self.num_task)
             self.train_loss_buffer = None # should be defined or initiated in trainer/train.py
             self.train_loss_buffer_per_epoch = [] # should be reset after the last epoch finishes
@@ -171,7 +176,8 @@ class RFEPFusionNoRegModel(BaseModel):
             #         self.mixing_augmentation = Mixing_Augment(
             #             mixup_beta, use_identity, self.device)
             self.init_training_settings()
-        self.TTA = self.opt['val'].get('TTA', False)        
+        self.TTA = self.opt['val'].get('TTA', False) 
+        self.vi_out_dim = self.opt['network_g'].get('vi_out_dim', 3)
 
     def init_training_settings(self):
         self.net_g.train()
@@ -352,9 +358,15 @@ class RFEPFusionNoRegModel(BaseModel):
             # # torch.distributed.barrier()            
             
             # loss计算时的参数命名：ir, Y_vi, Y_fusion, vi, fusion, seg_result, seg_label
-            Y_vi, _, _ = RGB2YCrCb(self.vi)
-            Y_enhanced, _, _ = RGB2YCrCb(self.enhanced)
-            Y_fusion, _, _ = RGB2YCrCb(self.fusion)
+            if self.vi_out_dim == 3:
+                Y_vi, _, _ = RGB2YCrCb(self.vi)
+                Y_enhanced, _, _ = RGB2YCrCb(self.enhanced)
+                Y_fusion, _, _ = RGB2YCrCb(self.fusion)
+            elif self.vi_out_dim == 1:
+                Y_vi, U_vi, V_vi = RGB2YCrCb(self.vi)
+                Y_enhanced, _, _ = RGB2YCrCb(self.enhanced)
+                Y_fusion = self.fusion.clone()
+                self.fusion = YCbCr2RGB(self.fusion, U_vi, V_vi)
             loss_kwargs = {
                 'ir': self.ir,
                 'Y_vi': Y_vi,
@@ -456,7 +468,8 @@ class RFEPFusionNoRegModel(BaseModel):
         w_crop = w_stride
         h_stride -= self.opt.get('overlap_slide_inference', 0)
         w_stride -= self.opt.get('overlap_slide_inference', 0)
-        bs, out_channels, h_img, w_img = vi.shape    
+        bs, _, h_img, w_img = vi.shape    
+        out_channels = self.opt['network_g'].get("vi_out_dim", 3)
         h_grids = max(h_img - h_crop + h_stride - 1, 0) // h_stride + 1
         w_grids = max(w_img - w_crop + w_stride - 1, 0) // w_stride + 1
         preds_fusion = torch.zeros(bs, out_channels, h_img, w_img)
@@ -633,13 +646,13 @@ class RFEPFusionNoRegModel(BaseModel):
         self.fusion = torch.mean(torch.stack(results_fusion), dim=0)
         self.seg_result = torch.mean(torch.stack(results_seg), dim=0)
         
-    def dist_validation(self, dataloader, current_iter, tb_logger, save_img, save_best_metric = 'psnr'):
+    def dist_validation(self, dataloader, current_iter, tb_logger, save_img, save_best_metric = ['psnr']):
         if self.opt['rank'] == 0:
             self.nondist_validation(dataloader, current_iter, tb_logger, save_img, save_best_metric)
 
     # 逐照片验证，batch_size=1，这是basicsr框架的一个缺陷，build_dataloader()里对于val、test阶段的batch_size写死为1
     # 导致验证时速度较慢
-    def nondist_validation(self, dataloader, current_iter, tb_logger, save_img, save_best_metric = 'psnr'):
+    def nondist_validation(self, dataloader, current_iter, tb_logger, save_img, save_best_metric = ['psnr']):
         dataset_name = dataloader.dataset.opt['name']
         with_metrics = self.opt['val'].get('metrics') is not None
         use_pbar = self.opt['val'].get('pbar', False)
@@ -661,8 +674,7 @@ class RFEPFusionNoRegModel(BaseModel):
         
         # import time
         # metric_time = {}
-        
-        visualize_palette = get_palette()
+                
         for idx, val_data in enumerate(dataloader):
             img_name = osp.splitext(osp.basename(val_data['img_name'][0]))[0]
             self.feed_data(val_data)
@@ -675,6 +687,10 @@ class RFEPFusionNoRegModel(BaseModel):
                     self.test()
                 else:
                     self.test_slide(self.ir, self.vi)
+            
+            if self.vi_out_dim == 1:
+                Y_vi, U_vi, V_vi = RGB2YCrCb(self.vi)                
+                self.fusion = YCbCr2RGB(self.fusion, U_vi, V_vi)
                         
             self.vi = self.vi.squeeze(0).detach().cpu().numpy().transpose(1, 2, 0)      
             self.vi = cv2.cvtColor(self.vi, cv2.COLOR_RGB2GRAY)*255
@@ -729,11 +745,13 @@ class RFEPFusionNoRegModel(BaseModel):
                 imwrite(tensor2img([self.seg_result], rgb2bgr=False, min_max=(0, 255)), save_seg_path)
                 # 保存分割的可视化结果
                 _, _, h, w = self.seg_result.shape
-                seg_visualize = np.zeros((h, w, 3), dtype=np.uint8)
-                seg_result_numpy = self.seg_result[0, 0].cpu().numpy()
+                seg_visualize = np.zeros((h, w, 3), dtype=np.uint8)                
+                seg_result_numpy = self.seg_result[0, 0].cpu().numpy().astype(np.uint8)
                 for cid, color in enumerate(visualize_palette):
                     seg_visualize[seg_result_numpy == cid] = color
-                imwrite(seg_visualize, save_seg_visualize_path)
+                imwrite(cv2.cvtColor(seg_visualize, cv2.COLOR_RGB2BGR), save_seg_visualize_path)
+                # seg_visualize = Image.fromarray(seg_visualize)
+                # seg_visualize.save(save_seg_visualize_path)
                                 
             if use_pbar:
                 pbar.update(1)
@@ -746,7 +764,7 @@ class RFEPFusionNoRegModel(BaseModel):
         # print('metric_time:')
         # pp.pprint(metric_time)
         
-        best_updated_flag = False
+        best_updated = []
         if with_metrics:
             for metric in self.metric_results.keys():
                 if metric == 'mIoUD':
@@ -754,13 +772,15 @@ class RFEPFusionNoRegModel(BaseModel):
                 else:
                     self.metric_results[metric] /= (idx + 1)
                 # update the best metric result
-                best_updated_flag |= self._update_best_metric_result(dataset_name, metric, self.metric_results[metric], current_iter, save_best_metric = save_best_metric)
+                updated = self._update_best_metric_result(dataset_name, metric, self.metric_results[metric], current_iter, save_best_metric = save_best_metric)
+                if updated is not None:
+                    best_updated.append(updated)
 
             self._log_validation_metric_values(current_iter, dataset_name, tb_logger)
-            if best_updated_flag and self.is_train:
+            if len(best_updated) and self.is_train:
                 # 如果在训练阶段有多个ValSet，应该在save_best()里的文件名加上dataset_name！
-                # 这里暂时不改，留个坑
-                self.save_best(current_iter, save_best_metric=save_best_metric)
+                # 这里暂时不改，留个坑                
+                self.save_best(current_iter, save_best_metric=best_updated)
     
     def _log_validation_metric_values(self, current_iter, dataset_name, tb_logger):
         log_str = f'Validation {dataset_name} @ {current_iter} iter\n'

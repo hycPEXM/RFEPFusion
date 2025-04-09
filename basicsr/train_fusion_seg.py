@@ -45,7 +45,7 @@ def create_train_val_dataloader(opt, logger):
 
             # num_iter_per_epoch = math.ceil(
             #     len(train_set) * dataset_enlarge_ratio / (dataset_opt['batch_size_per_gpu'] * opt['world_size']))
-            # 因为采用drop_last=True，hyc认为这里num_iter_per_epoch的计算应该改成floor的方式
+            # 因为采用drop_last=True，hyc认为这里num_iter_per_epoch的计算应该改成floor的方式            
             num_iter_per_epoch = math.floor(
                 len(train_set) * dataset_enlarge_ratio / (dataset_opt['batch_size_per_gpu'] * opt['world_size']))
             total_iters = int(opt['train']['total_iter'])
@@ -173,109 +173,121 @@ def train_pipeline(root_path):
         raise ValueError(f"Wrong prefetch_mode {prefetch_mode}. Supported ones are: None, 'cuda', 'cpu'.")
 
     # training
-    logger.info(f'Start training from epoch: {start_epoch}, iter: {current_iter}')
-    data_timer, iter_timer = AvgTimer(), AvgTimer()
-    start_time = time.time()
+    # logger.info(f'Start training from epoch: {start_epoch}, iter: {current_iter}')
+    # data_timer, iter_timer = AvgTimer(), AvgTimer()
+    # start_time = time.time()
 
-    if model.weighting_strategy is not None and model.train_loss_buffer is None:
-        model.train_loss_buffer = np.zeros([model.num_task, total_epochs])
-    # for epoch in range(start_epoch, total_epochs + 1):
-    for epoch in range(start_epoch, total_epochs):  # 没必要用total_epochs + 1吧，改成一个epoch-based的训练方式
-        train_sampler.set_epoch(epoch)
-        prefetcher.reset()
-        train_data = prefetcher.next()
+    # if model.weighting_strategy is not None and model.train_loss_buffer is None:
+    #     model.train_loss_buffer = np.zeros([model.num_task, total_epochs])
+    # stop_training = False
+    # # for epoch in range(start_epoch, total_epochs + 1):
+    # for epoch in range(start_epoch, total_epochs):  # 没必要用total_epochs + 1吧，改成一个epoch-based的训练方式
+    #     train_sampler.set_epoch(epoch)
+    #     prefetcher.reset()
+    #     train_data = prefetcher.next()
 
-        while train_data is not None:
-            data_timer.record()
+    #     while train_data is not None:
+    #         data_timer.record()
 
-            current_iter += 1
-            if current_iter > total_iters:
-                break            
-            # training
-            model.feed_data(train_data)
-            model.optimize_parameters(current_iter, epoch)
-            """
-            UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
-            warnings.warn("Detected call of `lr_scheduler.step()` before `optimizer.step()`. "
-            """
-            # update learning rate
-            model.update_learning_rate(current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
-            iter_timer.record()
-            if current_iter == 1:
-                # reset start time in msg_logger for more accurate eta_time
-                # not work in resume mode
-                msg_logger.reset_start_time()
-            # log
-            if current_iter % opt['logger']['print_freq'] == 0:
-                log_vars = {'epoch': epoch, 'iter': current_iter}
-                log_vars.update({'lrs': model.get_current_learning_rate()})
-                log_vars.update({'time': iter_timer.get_avg_time(), 'data_time': data_timer.get_avg_time()})
-                log_vars.update(model.get_current_log())
-                msg_logger(log_vars)
+    #         current_iter += 1
+    #         if current_iter > total_iters:
+    #             stop_training = True
+    #             break            
+    #         # training
+    #         model.feed_data(train_data)
+    #         model.optimize_parameters(current_iter, epoch)
 
-            # # save models and training states
-            # if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
-            #     logger.info('Saving models and training states.')
-            #     model.save(epoch, current_iter)
+    #         # update learning rate
+    #         model.update_learning_rate(current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
+    #         iter_timer.record()
+    #         if current_iter == 1:
+    #             # reset start time in msg_logger for more accurate eta_time
+    #             # not work in resume mode
+    #             msg_logger.reset_start_time()
+    #         # log
+    #         if current_iter % opt['logger']['print_freq'] == 0:
+    #             log_vars = {'epoch': epoch, 'iter': current_iter}
+    #             log_vars.update({'lrs': model.get_current_learning_rate()})
+    #             log_vars.update({'time': iter_timer.get_avg_time(), 'data_time': data_timer.get_avg_time()})
+    #             log_vars.update(model.get_current_log())
+    #             msg_logger(log_vars)
 
-            # validation
-            if opt.get('val') is not None and current_iter >= val_start_iter and (current_iter % opt['val']['val_freq'] == 0):
-                if len(val_loaders) > 1:
-                    logger.warning('Multiple validation datasets are *only* supported by SRModel.')
-                for val_loader in val_loaders:
-                    model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
+    #         # # save models and training states
+    #         # if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
+    #         #     logger.info('Saving models and training states.')
+    #         #     model.save(epoch, current_iter)
 
-            # 保存模型应该在validation之后，因为validation之后会更新metric_results
-            # save models and training states
-            # if current_iter >= val_start_iter and current_iter % opt['logger']['save_checkpoint_freq'] == 0:
-            if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
-                logger.info('Saving models and training states.')
-                model.save(epoch, current_iter)
+    #         # validation
+    #         if opt.get('val') is not None and current_iter >= val_start_iter and (current_iter % opt['val']['val_freq'] == 0):
+    #             if len(val_loaders) > 1:
+    #                 logger.warning('Multiple validation datasets are *only* supported by SRModel.')
+    #             for val_loader in val_loaders:
+    #                 model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
 
-            data_timer.start()
-            iter_timer.start()
-            train_data = prefetcher.next()
-        # end of iter
-        if model.weighting_strategy is not None:
-            # 取这个epoch里loss的平均值
-            model.train_loss_buffer[:, epoch] = np.array(model.train_loss_buffer_per_epoch).mean(axis=0)
-            # 重置，重新统计一个epoch里各个iter的loss
-            model.train_loss_buffer_per_epoch = []
-    # end of epoch
+    #         # 保存模型应该在validation之后，因为validation之后会更新metric_results
+    #         # save models and training states
+    #         # if current_iter >= val_start_iter and current_iter % opt['logger']['save_checkpoint_freq'] == 0:
+    #         if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
+    #             logger.info('Saving models and training states.')
+    #             model.save(epoch, current_iter)
 
-    consumed_time = str(datetime.timedelta(seconds=int(time.time() - start_time)))
-    logger.info(f'End of training. Time consumed: {consumed_time}')
-    logger.info('Save the latest model.')
-    model.save(epoch=-1, current_iter=-1)  
-    # -1 stands for the latest; epoch=-1 means not saving the best training states, while current_iter=-1 means saving the latest network
+    #         data_timer.start()
+    #         iter_timer.start()
+    #         train_data = prefetcher.next()
+    #     # end of iter
+        
+    #     # DWA相关代码，保留着也没事
+    #     if model.weighting_strategy is not None:
+    #         # 取这个epoch里loss的平均值
+    #         if model.train_loss_buffer_per_epoch != []:
+    #             model.train_loss_buffer[:, epoch] = np.array(model.train_loss_buffer_per_epoch).mean(axis=0)
+    #         # 重置，重新统计一个epoch里各个iter的loss
+    #         model.train_loss_buffer_per_epoch = []
+    #     if stop_training:
+    #         break
+    # # end of epoch    
+    
+    # consumed_time = str(datetime.timedelta(seconds=int(time.time() - start_time)))
+    # logger.info(f'End of training. Time consumed: {consumed_time}')
+    # logger.info('Save the latest model.')
+    # model.save(epoch=-1, current_iter=-1)  
+    # # -1 stands for the latest; epoch=-1 means not saving the best training states, while current_iter=-1 means saving the latest network
+    
     if opt.get('val') is not None:
         current_iter -= 1
         for val_loader in val_loaders:
-            # 确保用最后的模型再验证一遍；此外推理计算metric时每次的结果有细微偏差，顺便再测一次
-            print("latest model validating...")
-            model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
+            # pass
+            
+            # 确保用最后的模型再验证一遍
+            # print("latest model validating...")
+            # model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
             
             # 强制保存模型最后的可视化结果
             # model.validation(val_loader, current_iter, tb_logger, True) 
              
             # 用metric最好的模型，推理得到可视化结果
-            print("best model validating...")
+            model.best_net_g_path = "/home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_fusion_seg_no_register_archived_20250406_155240/best_mIoUD_50_mIoUD_0.739_mIoUI_0.715_entropy_6.970_AG_3.879_SF_11.898_SSIM_1.107.pth"
+            print("best model validating...")            
             if opt['train'].get('ema_decay', 0) > 0:
+                # print(model.best_net_g_ema_path)
                 model.load_network(model.net_g_ema, model.best_net_g_ema_path, True, 'params_ema')
                 model.validation(val_loader, current_iter, tb_logger, True)
             else:
+                # print(model.best_net_g_path)
                 model.load_network(model.net_g, model.best_net_g_path, True, 'params')
                 model.validation(val_loader, current_iter, tb_logger, True)
+                
             # 最佳模型TTA推理的可视化结果，并且测测TTA（multi-scale inference）的指标，看看能提升多少
             # 但是“平时”是默认不使用TTA的，这样测的才是“纯粹”的metric
             model.TTA = True
             print("best model validating using TTA...")
-            if opt['train'].get('ema_decay', 0) > 0:
+            if opt['train'].get('ema_decay', 0) > 0:                           
                 model.load_network(model.net_g_ema, model.best_net_g_ema_path, True, 'params_ema')
                 model.validation(val_loader, current_iter, tb_logger, True)
             else:
-                model.load_network(model.net_g, model.best_net_g_path, True, 'params')
+                # model.load_network(model.net_g, model.best_net_g_path, True, 'params')
                 model.validation(val_loader, current_iter, tb_logger, True)
+                
     if tb_logger:
         tb_logger.close()
 

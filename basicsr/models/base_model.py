@@ -32,7 +32,7 @@ class BaseModel():
         self.model_path_list.sort()
         self.best_net_g_path = None
         self.best_net_g_ema_path = None
-        self.save_best_metric = self.opt['val'].get('best_metric_to_save', 'psnr')        
+        self.save_best_metric = self.opt['val'].get('best_metric_to_save', ['psnr'])        
 
     def feed_data(self, data):
         pass
@@ -77,20 +77,20 @@ class BaseModel():
         self.best_metric_results[dataset_name] = record
 
     # 更新每一个metric的最好值，此函数返回True代表首要指标（决定哪一个是best network的指标）发生了更新
-    def _update_best_metric_result(self, dataset_name, metric, val, current_iter, save_best_metric = 'psnr'):
+    def _update_best_metric_result(self, dataset_name, metric, val, current_iter, save_best_metric = ['psnr']):
         if self.best_metric_results[dataset_name][metric]['better'] == 'higher':
             if val >= self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
                 self.best_metric_results[dataset_name][metric]['iter'] = current_iter
-                if save_best_metric == metric:
-                    return True
+                if metric in save_best_metric:
+                    return metric
         else:
             if val <= self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
                 self.best_metric_results[dataset_name][metric]['iter'] = current_iter
-                if save_best_metric == metric:
-                    return True
-        return False
+                if metric in save_best_metric:
+                    return metric
+        return None
 
     def model_ema(self, decay=0.999):
         net_g = self.get_bare_model(self.net_g)
@@ -384,6 +384,10 @@ class BaseModel():
                 state['best_metric'] = self.best_metric_results
             if hasattr(self, 'train_loss_buffer') and self.train_loss_buffer is not None:
                 state['train_loss_buffer'] = self.train_loss_buffer
+            if self.best_net_g_ema_path is not None:
+                state['best_net_g_ema_path'] = self.best_net_g_ema_path
+            elif self.best_net_g_path is not None:
+                state['best_net_g_path'] = self.best_net_g_path
             save_filename = f'{current_iter}.state'
             save_path = os.path.join(self.opt['path']['training_states'], save_filename)
 
@@ -428,6 +432,10 @@ class BaseModel():
             self.best_metric_results = resume_state['best_metric']
         if 'train_loss_buffer' in resume_state:
             self.train_loss_buffer = resume_state['train_loss_buffer']
+        if 'best_net_g_ema_path' in resume_state:
+            self.best_net_g_ema_path = resume_state['best_net_g_ema_path']
+        elif 'best_net_g_path' in resume_state:
+            self.best_net_g_path = resume_state['best_net_g_path']
 
     def reduce_loss_dict(self, loss_dict):
         """reduce loss dict.
@@ -456,7 +464,7 @@ class BaseModel():
 
             return log_dict
 
-    def save_best(self, current_iter, save_best_metric = 'psnr'):
+    def save_best(self, current_iter, save_best_metric = ['psnr']):
         def save_best_network(net, net_label, current_iter, param_key='params', save_metric_info = True):            
             save_filename = f'{net_label}_{current_iter}'
             with_metrics = self.opt['val'].get('metrics') is not None
@@ -507,6 +515,8 @@ class BaseModel():
                 logger.error(f"The best network {save_path} has already existed!")
                 return save_path        
         if hasattr(self, 'net_g_ema'):
-            self.best_net_g_ema_path = save_best_network([self.net_g, self.net_g_ema], f'best_{save_best_metric}', current_iter, param_key=['params', 'params_ema'])
+            for best_metric in save_best_metric:
+                self.best_net_g_ema_path = save_best_network([self.net_g, self.net_g_ema], f'best_{best_metric}', current_iter, param_key=['params', 'params_ema'])
         else:
-            self.best_net_g_path = save_best_network(self.net_g, f'best_{save_best_metric}', current_iter)
+            for best_metric in save_best_metric:
+                self.best_net_g_path = save_best_network(self.net_g, f'best_{best_metric}', current_iter)

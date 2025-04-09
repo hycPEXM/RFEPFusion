@@ -410,3 +410,7 @@ def analysis_Qabf(pA, pB, pF):
     denominator = np.sum(gA + gB)
     numerator = np.sum(QAF*gA + QBF*gB)
     return numerator / denominator
+
+@METRIC_REGISTRY.register()
+def SSIM_function(A, B, F, **kwargs):
+    return METRIC_REGISTRY.get('calculate_ssim')(A, F, crop_border=0, **kwargs) + METRIC_REGISTRY.get('calculate_ssim')(B, F, crop_border=0, **kwargs)
