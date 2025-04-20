@@ -36,11 +36,32 @@
 #     CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_0406.yml --launcher pytorch --auto_resume        
 #     # sleep 30
 # done
-CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_0406.yml --launcher pytorch
-
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_0406.yml --launcher pytorch
+# for i in {1..12000}
+# do    
+#     CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_UPerNet.yml     --launcher pytorch --auto_resume
+#     sleep 12
+# done
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register.yml --launcher pytorch --auto_resume
 # CUDA_VISIBLE_DEVICES=0,1,2,3,4 torchrun --nproc_per_node=5 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register.yml --launcher pytorch
 
+# CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_no_frozen.yml  --launcher pytorch
+# for i in {1..12000}
+# do    
+#     CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=4322 basicsr/train_fusion_seg.py -opt options/fusion/train_fusion_seg_MSRS_no_register_no_frozen.yml  --launcher pytorch --auto_resume
+#     sleep 12
+# done
+
 ##############################
 # stage3: train registration
+##############################
+# CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=4322 basicsr/train_reg.py -opt options/fusion/train_registration.yml  --launcher pytorch
+for i in {1..12000}
+do    
+    CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=4322 basicsr/train_reg.py -opt options/fusion/train_registration.yml  --launcher pytorch --auto_resume
+    sleep 12
+done
+
+##############################
+# stage4: global fine-tune
 ##############################

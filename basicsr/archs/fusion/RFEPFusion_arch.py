@@ -12,7 +12,7 @@ from .fusion_modules import CSA_CMR_Module, CMAF_Module, SIM, MultiScaleFusion
 from .seg_decoder import *
 from .net_utils import *
 from .MLP_decoder import DecoderHead as MLPHead
-from .UPerNet_decoder import UPerHead
+# from .UPerNet_decoder import UPerHead
 
 # 用矩阵分解的老版本
 # Asymmetric dual-stream/dual-path backbone (using backbone variant of different sizes for different modalities)
@@ -521,8 +521,9 @@ class RFEPFusion_no_register(nn.Module):
         
         # 这里直接用的params，没有考虑params_ema
         
-        self.vi_encoder.load_state_dict(torch.load(vi_encoder_pretrained_path)['params'], strict=True)        
-        self.ir_encoder.load_state_dict(torch.load(ir_encoder_pretrained_path)['params'], strict=True)
+        # 不再加载预训练模型的权重，不再冻结权重
+        # self.vi_encoder.load_state_dict(torch.load(vi_encoder_pretrained_path)['params'], strict=True)        
+        # self.ir_encoder.load_state_dict(torch.load(ir_encoder_pretrained_path)['params'], strict=True)
         # 冻结LLIE encoder的参数
         # print(list(self.vi_encoder.parameters())[0])
         # for param in self.vi_encoder.parameters():   
@@ -531,11 +532,13 @@ class RFEPFusion_no_register(nn.Module):
         #     # print(name)
         #     if not (name.startswith('block1.2')) or not (name.startswith('norm1')):
         #         param.requires_grad = False
-        for param in self.vi_encoder.parameters(): 
-            param.requires_grad = False
-        # print(list(self.vi_encoder.parameters())[0])
-        for param in self.ir_encoder.parameters():
-            param.requires_grad = False
+        
+        # for param in self.vi_encoder.parameters(): 
+        #     param.requires_grad = False
+        # # print(list(self.vi_encoder.parameters())[0])
+        # for param in self.ir_encoder.parameters():
+        #     param.requires_grad = False
+            
         # for param in list(self.ir_encoder.parameters())[:-2]:
         # for name, param in self.ir_encoder.named_parameters():
         #     if not (name.startswith('block1.2')) or not (name.startswith('norm1')):
@@ -615,7 +618,7 @@ class RFEPFusion_no_register_UPerNet(nn.Module):
                  vi_out_dim = 3,
                  ir_encoder_pretrained_path = '/home/hongyuchen/master_thesis/RFEPFusion/experiments/pretrained_models/ir_encoder.pth',
                  vi_encoder_pretrained_path = '/home/hongyuchen/master_thesis/RFEPFusion/experiments/pretrained_models/vi_encoder.pth'):
-        super(RFEPFusion_no_register, self).__init__()
+        super(RFEPFusion_no_register_UPerNet, self).__init__()
         if ir_settings == 'small':
             self.ir_settings = small_settings 
         elif ir_settings == 'tiny':
@@ -714,31 +717,15 @@ class RFEPFusion_no_register_UPerNet(nn.Module):
              CMAF_Module(dim=self.vi_settings['embed_dims'][2], num_heads=4), 
              CMAF_Module(dim=self.vi_settings['embed_dims'][3], num_heads=8)]
         )
-
-        # self.cmaf_upsample = nn.ModuleList(
-        #     [
-        #         UpsampleConv(in_channels=self.vi_settings['embed_dims'][1], 
-        #                  out_channels=self.vi_settings['embed_dims'][1],
-        #                  scale = stem_scale,
-        #                  norm_layer=self.vi_settings['norm_layer']), 
-        #         UpsampleConv(in_channels=self.vi_settings['embed_dims'][2], 
-        #                      out_channels=self.vi_settings['embed_dims'][2],
-        #                      scale = stem_scale,
-        #                      norm_layer=self.vi_settings['norm_layer']), 
-        #         UpsampleConv(in_channels=self.vi_settings['embed_dims'][3], 
-        #                      out_channels=self.vi_settings['embed_dims'][3],
-        #                      scale = stem_scale,
-        #                      norm_layer=self.vi_settings['norm_layer']),
-        #     ] 
-        # )
+        
         self.cmaf_upsample = nn.ModuleList(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) for _ in range(3)
         )
         
-        # self.eat_hamburger = SIM(norm_nc = self.vi_settings['embed_dims'][0], seg_nc = self.decode_head_settings['ham_channels'])
         self.fusion = MultiScaleFusion(in_channels=self.vi_settings['embed_dims'][0], mid_channels=64, out_channels=vi_out_dim, dilation_scales=[1, 2, 4])
 
-        self.seg_decoder = UPerHead()
+        self.seg_decoder = UPerHead(in_channels=self.vi_settings['embed_dims'], num_classes=9,
+                                    channels=512, pool_scales=(1,2,3,6))
         
         # 这里直接用的params，没有考虑params_ema
         
@@ -761,13 +748,14 @@ class RFEPFusion_no_register_UPerNet(nn.Module):
         ir = self.conv_align_stage1(ir)
         ir, vi = self.CSA_CMR_stage1_fusion(ir, vi)
         fusion = self.cmaf_stage1_fusion(ir, vi)
+        seg_fusion = fusion.clone()
         # print(ir)
 
         ir = self.conv_dealign_stage1(ir)
         ir = self.stem_ir(ir)   # H/2, W/2
         vi = self.stem_vi(vi)
 
-        fused_features_for_seg = []  # [(H/2, W/2), (H/4, W/4), (H/8, W/8)]
+        fused_features_for_seg = [seg_fusion]  # [(H/2, W/2), (H/4, W/4), (H/8, W/8)]
 
         # B = ir.shape[0]
 
@@ -796,7 +784,8 @@ class RFEPFusion_no_register_UPerNet(nn.Module):
             ir = ir.permute(0, 3, 1, 2).contiguous()
             vi = vi.permute(0, 3, 1, 2).contiguous()
             ir = self.conv_align_stage2_4[i](ir)
-            ir, vi = self.CSA_CMR_stages[i](ir, vi)            
+            ir, vi = self.CSA_CMR_stages[i](ir, vi) 
+            # fused_features_for_seg.append(self.cmaf_stages[i](ir, vi))
             fused_features_for_seg.append(self.cmaf_upsample[i](self.cmaf_stages[i](ir, vi)))
             # 最后一个阶段的ir不需要再dealign了
             if i != 2:
@@ -804,13 +793,17 @@ class RFEPFusion_no_register_UPerNet(nn.Module):
 
         # 记得最后要把segmentor输出 resize到和输入的图像一样大小
         # seg_out, hamburger = self.seg_decoder(fused_features_for_seg)
-        seg_out = self.seg_decoder(fused_features_for_seg)
+        fused_features_for_seg[0] = F.interpolate(fused_features_for_seg[0], 
+                                                  size=(fused_features_for_seg[1].shape[2:]),
+                                                  mode='bilinear')
+        seg_out = self.seg_decoder(fused_features_for_seg)  # (H/4, W/4)
         seg_out = F.interpolate(seg_out, size=(ori_h, ori_w), mode='bilinear', align_corners=False)
 
         # fusion = self.eat_hamburger(fusion, hamburger)
         fusion = self.fusion(fusion)
 
         return fusion, seg_out
+
 # @ARCH_REGISTRY.register()
 # class RFEPFusion(RFEPFusion_no_register):
 #     def __init__(self):

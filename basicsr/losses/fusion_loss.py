@@ -735,6 +735,124 @@ class HybridSegLoss(nn.Module):
             loss_total += loss_weight * loss(seg_result, seg_label, weight, reduction=self.reduction)
         return loss_total
 
+import kornia.filters as KF
+
+class GradientLoss(nn.Module):
+    def __init__(self):
+        super(GradientLoss,self).__init__()
+        self.AP5 = nn.AvgPool2d(5,stride=1,padding=2).cuda()
+        self.MP5 = nn.MaxPool2d(5,stride=1,padding=2).cuda()
+    def forward(self,img1,img2,mask=1,eps=1e-2):
+        #img1 = KF.gaussian_blur2d(img1,[7,7],[2,2])
+        # mask_ = torch.logical_and(img1>1e-2,img2>1e-2)
+        mean_ = img1.mean(dim=[-1,-2],keepdim=True)+img2.mean(dim=[-1,-2],keepdim=True)
+        mean_ = mean_.detach()/2
+        std_ = img1.std(dim=[-1,-2],keepdim=True)+img2.std(dim=[-1,-2],keepdim=True)
+        std_ = std_.detach()/2 
+        img1 = (img1-mean_)/std_
+        img2 = (img2-mean_)/std_
+        grad1 = KF.spatial_gradient(img1,order=2)
+        grad2 = KF.spatial_gradient(img2,order=2)
+        mask = mask.unsqueeze(1)
+        # grad1 = self.AP5(self.MP5(grad1))
+        # grad2 = self.AP5(self.MP5(grad2))
+        # print((grad1-grad2).abs().mean())
+        l = (((grad1-grad2)+(grad1-grad2).pow(2)*10)*mask).abs().clamp(min=eps).mean()
+        #l = l[...,5:-5,10:-10].mean()
+        return l
+
+def l1loss(img1,img2,mask=1,eps=1e-2):
+    mask_ = torch.logical_and(img1>1e-2,img2>1e-2)
+    mean_ = img1.mean(dim=[-1,-2],keepdim=True)+img2.mean(dim=[-1,-2],keepdim=True)
+    mean_ = mean_.detach()/2
+    std_ = img1.std(dim=[-1,-2],keepdim=True)+img2.std(dim=[-1,-2],keepdim=True)
+    std_ = std_.detach()/2 
+    img1 = (img1-mean_)/std_
+    img2 = (img2-mean_)/std_
+    img1 = KF.gaussian_blur2d(img1,[3,3],(1,1))*mask_
+    img2 = KF.gaussian_blur2d(img2,[3,3],(1,1))*mask_
+    return ((img1-img2)*mask).abs().clamp(min=eps).mean()
+
+def l2loss(img1,img2,mask=1,eps=1e-2):
+    mask_ = torch.logical_and(img1>1e-2,img2>1e-2)
+    mean_ = img1.mean(dim=[-1,-2],keepdim=True)+img2.mean(dim=[-1,-2],keepdim=True)
+    mean_ = mean_.detach()/2
+    std_ = img1.std(dim=[-1,-2],keepdim=True)+img2.std(dim=[-1,-2],keepdim=True)
+    std_ = std_.detach()/2 
+    img1 = (img1-mean_)/std_
+    img2 = (img2-mean_)/std_
+    img1 = KF.gaussian_blur2d(img1,[3,3],(1,1))*mask_
+    img2 = KF.gaussian_blur2d(img2,[3,3],(1,1))*mask_
+    return ((img1-img2)*mask).abs().clamp(min=eps).pow(2).mean()
+
+@LOSS_REGISTRY.register()
+class PhotometricLoss(nn.Module):
+    def __init__(self, loss_weight=1.0, reduction='mean', **kwargs):
+        super().__init__()
+        self.grad_loss = GradientLoss()
+        self.loss_weight = loss_weight
+    def forward(self, src, tgt, mask=1, weights=[0.1, 0.9], **kwargs):
+        return self.loss_weight * (weights[0] * (l1loss(src, tgt, mask) + l2loss(src, tgt, mask)) + weights[1] * self.grad_loss(src, tgt, mask))
+        
+@LOSS_REGISTRY.register()
+class EndPointLoss(nn.Module):
+    def __init__(self, loss_weight=1.0, dynamic_shape = False, *args, **kwargs):
+        super().__init__()
+        self.loss_weight = loss_weight
+        self.dynamic_shape = dynamic_shape
+    def forward(self, ref, tgt, disp, disp_gt, **kwargs):
+        if self.dynamic_shape:
+            _, _, h, w = ref.shape
+            self.border_mask = torch.zeros([1,h,w,1]).to(ref.device)
+            self.border_mask[:, 5:-5, 5:-5, :] = 1
+        elif not hasattr(self, 'border_mask'):
+            _, _, h, w = ref.shape
+            self.border_mask = torch.zeros([1,h,w,1]).to(ref.device)
+            self.border_mask[:, 5:-5, 5:-5, :] = 1
+        ref = (ref - ref.mean(dim=[-1, -2], keepdim=True)) / (ref.std(dim=[-1, -2], keepdim=True) + 1e-5)
+        tgt = (tgt - tgt.mean(dim=[-1, -2], keepdim=True)) / (tgt.std(dim=[-1, -2], keepdim=True) + 1e-5)
+        g_ref = KF.spatial_gradient(ref, order=2).mean(dim=1).abs().sum(dim=1).detach().unsqueeze(-1)
+        g_tgt = KF.spatial_gradient(tgt, order=2).mean(dim=1).abs().sum(dim=1).detach().unsqueeze(-1)
+        # print(g_ref.shape)
+        w = (((g_ref + g_tgt)) * 2 + 1) * self.border_mask
+        return self.loss_weight * (w * (1000 * (disp - disp_gt).abs().clamp(min=1e-3).pow(2))).mean()
+
+# re指代regularization
+def smooth_loss(disp,img=None):
+    smooth_d=[3*3,7*3,15*3]
+    # b,c,h,w = disp.shape
+    # print(disp.shape)
+    grad = KF.spatial_gradient(disp,order=2).abs().sum(dim=2)[:,:,5:-5,5:-5].clamp(min=1e-9).mean()
+    local_smooth_re = 0
+    for d in smooth_d:
+        local_mean = KF.gaussian_blur2d(disp,[d,d],(d//6,d//6),border_type='replicate')
+        #local_mean_pow2 = F.avg_pool2d(disp.pow(2),kernel_size=d,stride=1,padding=d//2)
+        local_smooth_re += 1/(d*1.0+1)*(disp-local_mean)[:,:,d//2:-d//2,d//2:-d//2].pow(2).mean()
+        #local_smooth_re += 1/(d*1.0+1)*(disp.pow(2)-local_mean_pow2)[:,:,5:-5,5:-5].pow(2).mean()
+    #global_var = disp[...,2:-2,2:-2].var(dim=[-1,-2]).clamp(1e-5).mean()
+    #std = img.std(dim=[-1,-2]).mean().clamp(min=0.003)
+    #grad = grad[...,10:-10,10:-10]
+    return 5000*local_smooth_re + 500*grad
+
+@LOSS_REGISTRY.register()
+class DefRegLoss(nn.Module):
+    def __init__(self, loss_weight=1.0, *args, **kwargs):
+        super().__init__()
+        self.loss_weight = loss_weight
+    def forward(self, disp):
+        return self.loss_weight * smooth_loss(disp)
+    
+def border_suppression(img, mask, **kwargs):
+        return (img * (1 - mask)).mean()
+    
+@LOSS_REGISTRY.register()
+class BorderSuppressionLoss(nn.Module):
+    def __init__(self, loss_weight=1.0, *args, **kwargs):
+        super().__init__()
+        self.loss_weight = loss_weight
+    def forward(self, img, mask):
+        return self.loss_weight * (img * (1 - mask)).mean()
+        
 if __name__ == '__main__':
     ir = torch.rand([5, 1, 320, 240])
     Y_vi = torch.rand([5, 1, 320, 240])

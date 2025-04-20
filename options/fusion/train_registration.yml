@@ -1,0 +1,176 @@
+# general settings
+name: RFEPFusion_registration
+model_type: RFEPFusionRegistrationModel
+scale: 1
+num_gpu: 4
+# num_gpu: 1
+manual_seed: 666
+# the size of the input image must be a multiple of 16
+# Padding in case images are not multiples of 16
+# pad_size: 16  
+# pad_size: 4
+# use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
+# seg_num_class: 9
+# val_start_iter: 1000
+
+display_intermediate_freq: 200
+# display_intermediate_freq: 1
+
+use_amp: false
+infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
+# Inference by sliding-window with overlap.
+overlap_slide_inference: 128  # 高宽都用一样的
+
+# dataset and data loader settings
+datasets:
+  train:
+    name: Registration_TrainSet
+    type: RegDataset
+    dataset_list: [/home/hongyuchen/master_thesis/MSRS_registration, /home/hongyuchen/master_thesis/RoadScene_registration]
+    vi_dir_name: vi
+    ir_dir_name: ir
+    # flow_format: .pt
+    # io_backend:
+    #   type: disk
+
+    # gt_size: [480, 360]  # [weight, height]
+    gt_size: 320
+    # gt_size: 360
+    # resize_ratio_range: [0.75, 1.8]
+    use_flip: true # both horizontal flip and vertical flip
+    # use_rot: false  # if weight != height, then use_rot must be false
+    use_rot: true
+    use_transpose: true
+
+    # data loader
+    num_worker_per_gpu: 8
+    batch_size_per_gpu: 8
+    # dataset_enlarge_ratio: 200
+    prefetch_mode: ~
+    # pin_memory: true
+    # persistent_workers: true
+
+  val:
+    name: Registration_ValSet
+    type: RegDataset
+    # dataset_list: [/home/hongyuchen/master_thesis/MSRS_registration, /home/hongyuchen/master_thesis/RoadScene_registration]
+    # dataset_list: [/home/hongyuchen/master_thesis/RoadScene_registration]
+    dataset_list: [/home/hongyuchen/master_thesis/MSRS_registration/mini_test, /home/hongyuchen/master_thesis/RoadScene_registration/mini_test]
+    # dataset_list: [/home/hongyuchen/master_thesis/RoadScene_registration/mini_test]
+    vi_dir_name: vi
+    ir_dir_name: ir
+    ir_warp_dir_name: ir_warp
+    flow_dir_name: ir_flow 
+    flow_format: .pt
+    # io_backend:
+    #   type: disk
+
+
+# network structures
+network_g:
+  type: RFEPFusion_reg_net
+
+# path
+path:
+  # pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_registration_archived_20250420_193810/best_EPE_8000_EPE_0.013_SWNCC_0.195_PhotometricMSE_0.003.pth
+  pretrain_network_g: ~
+  strict_load_g: false
+  resume_state: ~
+
+# training settings
+train:
+  # ema_decay: 0.999
+  optim_g:
+    type: AdamW
+    lr: !!float 2e-4  # 初始学习率，实际上不会被用到
+    weight_decay: 0.0005
+    betas: [0.9, 0.99]
+
+  use_grad_clip: true
+  # max_grad_norm: 0.001
+  # max_grad_norm: 0.1
+  max_grad_norm: 1
+
+  # mixing_augs:
+  #   mixup: true
+  #   mixup_beta: 1.2
+  #   use_identity: true
+
+  # iter-based training
+  total_iter: 20000  
+  # total_iter: 2 
+  # total_epoch: 500
+  warmup_iter: -1  # no warm up
+  scheduler:
+    type: OneCycleLR
+    # max_lr: !!float 5e-4
+    max_lr: !!float 1e-5
+    total_steps: 20000  # 保持和total_iter一致 
+    pct_start: 0.2
+    div_factor: 10
+    final_div_factor: 10
+    # last_epoch: -1  # 这个参数在base_model里的resume_training自动会设置好
+
+  # losses
+  losses:
+    Photometric:
+      type: PhotometricLoss
+      loss_weight: 9.0
+    EndPoint:
+      type: EndPointLoss
+      loss_weight: 1.0
+    DefReg:  # Deformation field smooth regularization loss
+      type: DefRegLoss
+      loss_weight: 3.0
+    # BorderSup:
+    #   type: BorderSuppressionLoss
+    #   loss_weight: 0.1    
+  
+
+# validation settings
+val:
+  val_freq: !!float 1000
+  # val_freq: !!float 1
+  save_img: true
+  # save_img: true
+
+  # pbar: true
+
+  metrics:
+    # psnr: # metric name, can be arbitrary
+    #   type: calculate_psnr
+    #   crop_border: 0
+    #   test_y_channel: false
+    # niqe:
+    #   type: calculate_niqe
+    #   crop_border: 0
+    #   better: lower  # the lower, the better 只要设置不是“higher”，就是越小越好
+    # MRE: # mean reprojection error
+    #   type: calculate_MRE
+    #   better: lower
+    EPE: # end-point error
+      type: calculate_EPE
+      better: lower
+    SWNCC: # sliding-window normalized cross correlation
+      type: calculate_SWNCC  # 也叫LNCC: Local (over window) normalized cross correlation. 参考D:\学习\电子课题组\论文\配准与融合\配准\UMF-CMGR\UMF-CMGR-main\Evaluation\metrics.py
+    PhotometricMSE:
+      type: calculate_PixelMSE
+      better: lower
+  best_metric_to_save: [EPE]
+    
+# logging settings
+logger:
+  print_freq: 100
+  # print_freq: 1
+  save_checkpoint_freq: !!float 1000
+  # save_checkpoint_freq: !!float 1
+  save_checkpoint_max_num: 10
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500

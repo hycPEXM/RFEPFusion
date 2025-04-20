@@ -127,24 +127,7 @@ def train_pipeline(root_path):
     result = create_train_val_dataloader(opt, logger)
     train_loader, train_sampler, val_loaders, total_epochs, total_iters = result
 
-    torch.autograd.set_detect_anomaly(True)
-    
-    # print("detecting NaN in train_loader...")
-    # for batch in train_loader:
-    #     for k, v in batch.items():
-    #         if k!='img_name':
-    #             if torch.isnan(v).any():
-    #                 print(f"NaN detected in {k}!")
-    #             if k == 'seg':
-    #                 if v.max().item() > 8 or v.min().item() < 0:
-    #                     print(k, "abnormal!")
-    #             else:
-    #                 if v.max().item() > 1+1e-6 or v.min().item() < -1e-6:
-    #                     print(k, "abnormal!")
-    #             # print(k, "--- max_value:", v.max().item(), "min_value:", v.min().item())
-    #             # import time
-    #             # time.sleep(3)
-    # print("detection finished.")
+    # torch.autograd.set_detect_anomaly(True)
     
     # create model
     model = build_model(opt)
@@ -177,8 +160,8 @@ def train_pipeline(root_path):
     data_timer, iter_timer = AvgTimer(), AvgTimer()
     start_time = time.time()
 
-    if model.weighting_strategy is not None and model.train_loss_buffer is None:
-        model.train_loss_buffer = np.zeros([model.num_task, total_epochs])
+    # if model.weighting_strategy is not None and model.train_loss_buffer is None:
+    #     model.train_loss_buffer = np.zeros([model.num_task, total_epochs])
     stop_training = False
     # for epoch in range(start_epoch, total_epochs + 1):
     for epoch in range(start_epoch, total_epochs):  # 没必要用total_epochs + 1吧，改成一个epoch-based的训练方式
@@ -222,8 +205,8 @@ def train_pipeline(root_path):
                 if len(val_loaders) > 1:
                     logger.warning('Multiple validation datasets are *only* supported by SRModel.')
                 for val_loader in val_loaders:
-                    model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
-
+                    model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])            
+            
             # 保存模型应该在validation之后，因为validation之后会更新metric_results
             # save models and training states
             # if current_iter >= val_start_iter and current_iter % opt['logger']['save_checkpoint_freq'] == 0:
@@ -237,12 +220,12 @@ def train_pipeline(root_path):
         # end of iter
         
         # DWA相关代码，保留着也没事
-        if model.weighting_strategy is not None:
-            # 取这个epoch里loss的平均值
-            if model.train_loss_buffer_per_epoch != []:
-                model.train_loss_buffer[:, epoch] = np.array(model.train_loss_buffer_per_epoch).mean(axis=0)
-            # 重置，重新统计一个epoch里各个iter的loss
-            model.train_loss_buffer_per_epoch = []
+        # if model.weighting_strategy is not None:
+        #     # 取这个epoch里loss的平均值
+        #     if model.train_loss_buffer_per_epoch != []:
+        #         model.train_loss_buffer[:, epoch] = np.array(model.train_loss_buffer_per_epoch).mean(axis=0)
+        #     # 重置，重新统计一个epoch里各个iter的loss
+        #     model.train_loss_buffer_per_epoch = []
         if stop_training:
             break
     # end of epoch    
@@ -253,43 +236,33 @@ def train_pipeline(root_path):
     model.save(epoch=-1, current_iter=-1)  
     # -1 stands for the latest; epoch=-1 means not saving the best training states, while current_iter=-1 means saving the latest network
     
-    if opt.get('val') is not None:
-        current_iter -= 1
-        for val_loader in val_loaders:
-            # pass
+    # if opt.get('val') is not None:
+    #     current_iter -= 1
+    #     for val_loader in val_loaders:
+    #         # pass
             
-            # 确保用最后的模型再验证一遍
-            # print("latest model validating...")
-            # model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
+    #         # 确保用最后的模型再验证一遍
+    #         # print("latest model validating...")
+    #         # model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
             
-            # 强制保存模型最后的可视化结果
-            # model.validation(val_loader, current_iter, tb_logger, True) 
+    #         # 强制保存模型最后的可视化结果
+    #         # model.validation(val_loader, current_iter, tb_logger, True) 
              
-            # 用metric最好的模型，推理得到可视化结果
-            # model.best_net_g_path = "/home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_fusion_seg_no_register_archived_20250406_155240/best_mIoUD_50_mIoUD_0.739_mIoUI_0.715_entropy_6.970_AG_3.879_SF_11.898_SSIM_1.107.pth"
-            # print("best model validating...") 
-            import glob
-            model.best_net_g_path = glob.glob(osp.join(opt['path']['experiments_root'], opt['name'], 'best_entropy*'))[0]
-            if opt['train'].get('ema_decay', 0) > 0:
-                # print(model.best_net_g_ema_path)
-                model.load_network(model.net_g_ema, model.best_net_g_ema_path, True, 'params_ema')
-                model.validation(val_loader, current_iter, tb_logger, True)
-            else:
-                # print(model.best_net_g_path)
-                model.load_network(model.net_g, model.best_net_g_path, True, 'params')
-                model.validation(val_loader, current_iter, tb_logger, True)
+    #         # 用metric最好的模型，推理得到可视化结果
+    #         # model.best_net_g_path = "/home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_fusion_seg_no_register_archived_20250406_155240/best_mIoUD_50_mIoUD_0.739_mIoUI_0.715_entropy_6.970_AG_3.879_SF_11.898_SSIM_1.107.pth"
+    #         # print("best model validating...") 
+    #         import glob
+    #         model.best_net_g_path = glob.glob(osp.join(opt['path']['experiments_root'], opt['name'], 'best_entropy*'))[0]
+    #         if opt['train'].get('ema_decay', 0) > 0:
+    #             # print(model.best_net_g_ema_path)
+    #             model.load_network(model.net_g_ema, model.best_net_g_ema_path, True, 'params_ema')
+    #             model.validation(val_loader, current_iter, tb_logger, True)
+    #         else:
+    #             # print(model.best_net_g_path)
+    #             model.load_network(model.net_g, model.best_net_g_path, True, 'params')
+    #             model.validation(val_loader, current_iter, tb_logger, True)
                 
-            # 最佳模型TTA推理的可视化结果，并且测测TTA（multi-scale inference）的指标，看看能提升多少
-            # 但是“平时”是默认不使用TTA的，这样测的才是“纯粹”的metric
-            model.TTA = True
-            model.best_net_g_path = glob.glob(osp.join(opt['path']['experiments_root'], opt['name'], 'best_mIoUD*'))[0]
-            print("best model validating using TTA...")
-            if opt['train'].get('ema_decay', 0) > 0:                           
-                model.load_network(model.net_g_ema, model.best_net_g_ema_path, True, 'params_ema')
-                model.validation(val_loader, current_iter, tb_logger, True)
-            else:
-                model.load_network(model.net_g, model.best_net_g_path, True, 'params')
-                model.validation(val_loader, current_iter, tb_logger, True)
+            
                 
     if tb_logger:
         tb_logger.close()

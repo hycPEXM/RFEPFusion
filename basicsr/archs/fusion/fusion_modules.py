@@ -219,10 +219,15 @@ class MultiScaleFusion(nn.Module):
         self.convs_pre = nn.Sequential(
             nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(in_channels),
-            nn.GELU()
+            nn.GELU(),
+            # nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False),
+            # nn.BatchNorm2d(in_channels),
+            # nn.GELU(),
         )
         
         # self.scales = dilation_scales
+        
+        # 直接用KF.spatial_gradient就好了，都实现好了
         
         # Sobel算子
         # sobel_kernel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32)

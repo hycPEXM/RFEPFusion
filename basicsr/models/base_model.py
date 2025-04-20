@@ -26,10 +26,13 @@ class BaseModel():
         # self.state_path_list = []
         # self.model_path_list = []
         # 修复resume时需要重新初始化state_path_list和model_path_list的问题
-        self.state_path_list = glob.glob(os.path.join(self.opt['path']['training_states'], "*.state"))
-        self.state_path_list.sort()
-        self.model_path_list = glob.glob(os.path.join(self.opt['path']['models'], "*.pth"))
-        self.model_path_list.sort()
+        # 如果training_states这个key不存在
+        if opt['path'].get('training_states') is not None:
+            self.state_path_list = glob.glob(os.path.join(self.opt['path']['training_states'], "*.state"))
+            self.state_path_list.sort()
+        if opt['path'].get('models') is not None:
+            self.model_path_list = glob.glob(os.path.join(self.opt['path']['models'], "*.pth"))
+            self.model_path_list.sort()
         self.best_net_g_path = None
         self.best_net_g_ema_path = None
         self.save_best_metric = self.opt['val'].get('best_metric_to_save', ['psnr'])        
@@ -114,6 +117,8 @@ class BaseModel():
         net = net.to(self.device)
         if self.opt['dist']:
             find_unused_parameters = self.opt.get('find_unused_parameters', False)
+            # net = DistributedDataParallel(
+                # net, device_ids=[torch.cuda.current_device()], find_unused_parameters=find_unused_parameters, bucket_cap_mb=100)
             net = DistributedDataParallel(
                 net, device_ids=[torch.cuda.current_device()], find_unused_parameters=find_unused_parameters)
         elif self.opt['num_gpu'] > 1:
@@ -470,7 +475,7 @@ class BaseModel():
             with_metrics = self.opt['val'].get('metrics') is not None
             if save_metric_info and with_metrics:
                 for metric, value in self.metric_results.items():
-                    save_filename += f'_{metric}_{value:.3f}'
+                    save_filename += f'_{metric}_{value:.4e}'
             save_filename += '.pth'
             exp_root = self.opt['path']['experiments_root']
             save_path = os.path.join(exp_root, save_filename)

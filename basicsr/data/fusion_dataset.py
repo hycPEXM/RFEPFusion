@@ -96,9 +96,21 @@ class MSRSDataset(data.Dataset):
             vi, enhanced, ir, seg, mask = torch.split(to_augment, [3, 3, 1, 1, 1], dim=0)
             
             seg = seg.long()
+            """
+            MSRS
+            ir:
+            Dataset Mean: [23.3697317]
+            Dataset Std: [17.29757137]
+            vi:
+            Dataset Mean: [57.48169049 65.97649941 56.81005852]
+            Dataset Std: [42.61234064 43.30694698 43.04455638]
+            """
+            
             return {
                 'ir': ir,
                 'vi': vi,
+                # 'ir': normalize(ir, [0.091646], [0.06783361321568628]),
+                # 'vi': normalize(vi, [0.22541839, 0.2587137, 0.22278454], [0.16710722, 0.16983116, 0.16880218]),
                 'seg': seg,
                 'mask': mask,
                 'enhanced': enhanced,
@@ -109,6 +121,8 @@ class MSRSDataset(data.Dataset):
             return {
                 'ir': ir,
                 'vi': vi,
+                # 'ir': normalize(ir, [0.091646], [0.06783361321568628]),
+                # 'vi': normalize(vi, [0.22541839, 0.2587137, 0.22278454], [0.16710722, 0.16983116, 0.16880218]),
                 'seg': seg,
                 'img_name': img_name
             }                    
@@ -120,7 +134,7 @@ class MSRSDataset(data.Dataset):
 @DATASET_REGISTRY.register()
 class FusionSegDataset(data.Dataset):
     def __init__(self, opt):
-        super(MSRSDataset, self).__init__()
+        super(FusionSegDataset, self).__init__()
         self.opt = opt
                         
         self.vi_folder = os.path.join(opt['dataroot'], opt['vi_dir_name'])

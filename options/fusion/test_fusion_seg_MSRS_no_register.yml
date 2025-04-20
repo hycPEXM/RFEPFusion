@@ -1,0 +1,150 @@
+# general settings
+name: test_RFEPFusion_fusion_seg_no_register
+model_type: RFEPFusionNoRegModel
+scale: 1
+num_gpu: 1
+# num_gpu: 1
+manual_seed: 666
+# the size of the input image must be a multiple of 16
+# Padding in case images are not multiples of 16
+# pad_size: 16  
+# pad_size: 4
+# use_lq_for_l_color: true   # 以lq(low)作为color loss的GT
+seg_num_class: 9
+# val_start_iter: 12000
+
+use_amp: false
+infer_slide_max_size: 640  # 图片超过多少就启用滑窗推理
+# Inference by sliding-window with overlap.
+overlap_slide_inference: 128  # 高宽都用一样的
+
+# dataset and data loader settings
+datasets:
+  test_1:
+    name: fusion_seg_M3FD
+    type: FusionSegDataset
+    dataroot: /home/hongyuchen/master_thesis/M3FD_Fusion
+    vi_dir_name: Vis
+    ir_dir_name: Ir
+  test_2:
+    name: fusion_seg_RoadScene
+    type: FusionSegDataset
+    dataroot: /Data/suhongli/suhongli/Dif-Fusion-main/RoadScene-master
+    vi_dir_name: crop_LR_visible
+    ir_dir_name: cropinfrared
+  
+  # train:
+  #   name: fusion_seg_no_reg_TrainSet
+  #   type: MSRSDataset
+  #   dataroot: /home/hongyuchen/master_thesis/MSRSdataset/train/
+  #   vi_dir_name: vi
+  #   ir_dir_name: ir
+  #   seg_dir_name: Segmentation_labels_relabel
+  #   mask_dir_name: mask_person_relabel
+  #   vi_enhanced_dir_name: enhanced
+  #   # io_backend:
+  #   #   type: disk
+
+  #   # gt_size: [480, 360]  # [weight, height]
+  #   gt_size: 320
+  #   # gt_size: 360
+  #   resize_ratio_range: [0.75, 1.8]
+  #   use_flip: true # both horizontal flip and vertical flip
+  #   # use_rot: false  # if weight != height, then use_rot must be false
+  #   use_rot: true
+  #   use_transpose: true
+
+  #   # data loader
+  #   num_worker_per_gpu: 4
+  #   batch_size_per_gpu: 4
+  #   # dataset_enlarge_ratio: 200
+  #   prefetch_mode: ~
+  #   # pin_memory: true
+  #   # persistent_workers: true
+
+  # val:
+  #   name: fusion_seg_no_reg_ValSet
+  #   type: MSRSDataset
+  #   dataroot: /home/hongyuchen/master_thesis/MSRSdataset/test/
+  #   vi_dir_name: vi
+  #   ir_dir_name: ir
+  #   seg_dir_name: Segmentation_labels_relabel    
+  #   # io_backend:
+  #   #   type: disk
+
+
+# network structures
+network_g:
+  type: RFEPFusion_no_register
+  vi_settings: hyc_small
+  ir_settings: tiny
+  stem_scale: 2
+  vi_out_dim: 1
+
+# path
+path:
+  pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_fusion_seg_no_register_archived_20250406_155240/best_mIoUD_50_mIoUD_0.739_mIoUI_0.715_entropy_6.970_AG_3.879_SF_11.898_SSIM_1.107.pth
+  strict_load_g: true
+  # resume_state: ~
+
+# validation settings
+val:
+  # val_freq: !!float 200
+  # val_freq: !!float 2
+  suffix: ~
+  save_img: true
+  # save_img: true
+
+  # pbar: true
+
+  metrics:
+    # psnr: # metric name, can be arbitrary
+    #   type: calculate_psnr
+    #   crop_border: 0
+    #   test_y_channel: false
+    # niqe:
+    #   type: calculate_niqe
+    #   crop_border: 0
+    #   better: lower  # the lower, the better 只要设置不是“higher”，就是越小越好
+
+    # per-dataset mean intersection over union
+    # mIoUD:
+    #   type: calculate_mIoUD
+    #   # device: cpu
+    #   device: cuda
+
+    # # per-image mIoU
+    # mIoUI:
+    #   type: calculate_mIoUI
+    #   # device: cpu
+    #   device: cuda
+    
+    # 在进行下面metric计算时应该把图像转为灰度图，dtype为int32
+    entropy:
+      type: EN_function
+    AG:
+      type: AG_function
+    # VIF计算太耗时了
+    # VIF:
+    #   type: VIF_function
+    SF:
+      type: SF_function
+    # 把SSIM_loss改成SCD，还治不了你吗，没试过哈
+    # SCD:
+    #   type: SCD_function
+    # MI略耗时
+    # MI:
+    #   type: MI_function
+    SSIM:
+      type: SSIM_function
+  best_metric_to_save: [mIoUD, entropy]
+  
+  # test time augmentation
+  # TTA: true
+  TTA_pipeline:
+    flip_aug: true
+    rot90_aug: false  # 因为图片高宽大概率是不一样的
+    flip_direction: [horizontal] # [horizontal, vertical]
+    # img_ratios: [0.75, 1.0, 1.25, 1.5, 1.75]
+    # img_ratios: [1.0, 1.25, 1.5, 1.75, 2.0]
+    img_ratios: [1.0, 1.25, 1.5, 1.75]

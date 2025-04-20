@@ -143,7 +143,9 @@ class RFEPFusionNoRegModel(BaseModel):
         
         self.num_task = 2 # fusion + segmentation
         
-        self.weighting_strategy = opt['train'].get('MTL_auto_weighting')
+        self.weighting_strategy = None
+        if self.is_train:
+            self.weighting_strategy = opt['train'].get('MTL_auto_weighting')
                         
         # ‌Automatic Mixed Precision Training
         self.use_amp = opt.get('use_amp', False) and load_amp        
@@ -158,7 +160,7 @@ class RFEPFusionNoRegModel(BaseModel):
         #     raise ValueError('auto weighting currently can\'t used with amp training') 
         
         if self.weighting_strategy:
-            print("MTL auto weighting...")
+            print(f"MTL auto weighting using {self.weighting_strategy}...")
             self.weighting_strategy = getattr(weighting, self.weighting_strategy)(device=self.device, num_task=self.num_task)
             self.train_loss_buffer = None # should be defined or initiated in trainer/train.py
             self.train_loss_buffer_per_epoch = [] # should be reset after the last epoch finishes
