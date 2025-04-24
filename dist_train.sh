@@ -55,7 +55,7 @@
 ##############################
 # stage3: train registration
 ##############################
-# CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=4322 basicsr/train_reg.py -opt options/fusion/train_registration.yml  --launcher pytorch
+CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=4322 basicsr/train_reg.py -opt options/fusion/train_registration.yml  --launcher pytorch
 for i in {1..12000}
 do    
     CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=4322 basicsr/train_reg.py -opt options/fusion/train_registration.yml  --launcher pytorch --auto_resume

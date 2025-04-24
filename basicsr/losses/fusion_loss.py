@@ -804,11 +804,11 @@ class EndPointLoss(nn.Module):
         if self.dynamic_shape:
             _, _, h, w = ref.shape
             self.border_mask = torch.zeros([1,h,w,1]).to(ref.device)
-            self.border_mask[:, 5:-5, 5:-5, :] = 1
+            self.border_mask[:, 10:-10, 10:-10, :] = 1
         elif not hasattr(self, 'border_mask'):
             _, _, h, w = ref.shape
             self.border_mask = torch.zeros([1,h,w,1]).to(ref.device)
-            self.border_mask[:, 5:-5, 5:-5, :] = 1
+            self.border_mask[:, 10:-10, 10:-10, :] = 1
         ref = (ref - ref.mean(dim=[-1, -2], keepdim=True)) / (ref.std(dim=[-1, -2], keepdim=True) + 1e-5)
         tgt = (tgt - tgt.mean(dim=[-1, -2], keepdim=True)) / (tgt.std(dim=[-1, -2], keepdim=True) + 1e-5)
         g_ref = KF.spatial_gradient(ref, order=2).mean(dim=1).abs().sum(dim=1).detach().unsqueeze(-1)

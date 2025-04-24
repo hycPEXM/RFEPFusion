@@ -19,7 +19,7 @@ import kornia.geometry.transform as KGT
 import kornia.utils as KU
 import kornia.filters as KF
 
-def randflow(img,angle=6,trans=0.06,ratio=1,sigma=15,base=500, blur_iter=5):
+def randflow(img,angle=8,trans=0.08,ratio=1,sigma=15,base=500, blur_iter=6):
     h,w=img.shape[2],img.shape[3]
     # affine
     if not base is None:

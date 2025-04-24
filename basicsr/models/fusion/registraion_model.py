@@ -197,7 +197,8 @@ class RFEPFusionRegistrationModel(BaseModel):
             loss_dict['l_EndPoint'] = self.loss_cls_dict['l_EndPoint'](self.ir_warped, vi_warped_fake, vi2ir_forward_disp, self.disp) \
                 + self.loss_cls_dict['l_EndPoint'](self.vi_warped, ir_warped_fake, ir2vi_forward_disp, self.disp)
             loss_dict['l_DefReg'] = self.loss_cls_dict['l_DefReg'](ir2vi_forward_disp.permute(0,3,1,2)) + self.loss_cls_dict['l_DefReg'](vi2ir_forward_disp.permute(0,3,1,2))
-            l_total = loss_dict['l_Photometric'] + loss_dict['l_EndPoint'] + loss_dict['l_DefReg']
+            loss_dict['l_BorderSup'] = self.loss_cls_dict['l_BorderSup'](ir_reg, goodmask_inv) + self.loss_cls_dict['l_BorderSup'](vi_reg, goodmask_inv) + self.loss_cls_dict['l_BorderSup'](ir_warped_fake, goodmask) + self.loss_cls_dict['l_BorderSup'](vi_warped_fake, goodmask)
+            l_total = loss_dict['l_Photometric'] + loss_dict['l_EndPoint'] + loss_dict['l_DefReg'] + loss_dict['l_BorderSup']
             loss_dict['l_total'] = l_total
             
         

@@ -34,7 +34,7 @@ datasets:
     #   type: disk
 
     # gt_size: [480, 360]  # [weight, height]
-    gt_size: 320
+    gt_size: 256
     # gt_size: 360
     # resize_ratio_range: [0.75, 1.8]
     use_flip: true # both horizontal flip and vertical flip
@@ -43,8 +43,8 @@ datasets:
     use_transpose: true
 
     # data loader
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    num_worker_per_gpu: 6
+    batch_size_per_gpu: 6
     # dataset_enlarge_ratio: 200
     prefetch_mode: ~
     # pin_memory: true
@@ -73,6 +73,7 @@ network_g:
 # path
 path:
   # pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_registration_archived_20250420_193810/best_EPE_8000_EPE_0.013_SWNCC_0.195_PhotometricMSE_0.003.pth
+  # pretrain_network_g: /home/hongyuchen/master_thesis/RFEPFusion/experiments/RFEPFusion_registration_archived_20250420_234833/models/net_g_2000_EPE_0.013_SWNCC_0.192_PhotometricMSE_0.004.pth
   pretrain_network_g: ~
   strict_load_g: false
   resume_state: ~
@@ -83,7 +84,7 @@ train:
   optim_g:
     type: AdamW
     lr: !!float 2e-4  # 初始学习率，实际上不会被用到
-    weight_decay: 0.0005
+    weight_decay: 0.0001
     betas: [0.9, 0.99]
 
   use_grad_clip: true
@@ -97,15 +98,15 @@ train:
   #   use_identity: true
 
   # iter-based training
-  total_iter: 20000  
+  total_iter: 80000  
   # total_iter: 2 
   # total_epoch: 500
   warmup_iter: -1  # no warm up
   scheduler:
     type: OneCycleLR
     # max_lr: !!float 5e-4
-    max_lr: !!float 1e-5
-    total_steps: 20000  # 保持和total_iter一致 
+    max_lr: !!float 1e-4
+    total_steps: 80000  # 保持和total_iter一致 
     pct_start: 0.2
     div_factor: 10
     final_div_factor: 10
@@ -121,10 +122,10 @@ train:
       loss_weight: 1.0
     DefReg:  # Deformation field smooth regularization loss
       type: DefRegLoss
-      loss_weight: 3.0
-    # BorderSup:
-    #   type: BorderSuppressionLoss
-    #   loss_weight: 0.1    
+      loss_weight: 6.0
+    BorderSup:
+      type: BorderSuppressionLoss
+      loss_weight: 1.0
   
 
 # validation settings
